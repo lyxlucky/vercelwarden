@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { users, devices } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import {
   generateTokenPair,
   newUuid,
@@ -84,10 +84,16 @@ async function handlePasswordLogin(formData: FormData) {
   const deviceTypeNum = deviceTypeRaw ? parseInt(deviceTypeRaw) || 0 : 0;
   let device: typeof devices.$inferSelect;
 
+  // Look up the device scoped by (userUuid, identifier). The same browser may
+  // have previously logged in as a different user (e.g. account deletion +
+  // re-register on the same machine); reusing that row would leave the device
+  // pinned to the prior user and every verifyAuth would fail. So we match per
+  // user. If a row exists for this identifier but a different user, drop it
+  // first so the unique index on `identifier` (if any) doesn't conflict.
   const [existingDevice] = await db
     .select()
     .from(devices)
-    .where(eq(devices.identifier, deviceIdentifier))
+    .where(and(eq(devices.identifier, deviceIdentifier), eq(devices.userUuid, user.uuid)))
     .limit(1);
 
   const now = new Date();
@@ -98,6 +104,11 @@ async function handlePasswordLogin(formData: FormData) {
       .where(eq(devices.uuid, existingDevice.uuid));
     device = { ...existingDevice, updatedAt: now, name: deviceName };
   } else {
+    // Remove any stale row owned by another user for the same identifier.
+    await db
+      .delete(devices)
+      .where(and(eq(devices.identifier, deviceIdentifier), ne(devices.userUuid, user.uuid)));
+
     device = {
       uuid: newUuid(),
       userUuid: user.uuid,

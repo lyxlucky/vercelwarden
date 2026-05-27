@@ -11,6 +11,24 @@ function accessIdFromUuid(uuid: string): string {
   return Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Inverse of accessIdFromUuid — decode a base64url accessId (no padding) into
+// the canonical 8-4-4-4-12 lowercased UUID string used by `sends.uuid`. Returns
+// null when the input isn't a 22-char base64url string of exactly 16 bytes.
+export function uuidFromAccessId(accessId: string): string | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(accessId)) return null;
+  const b64 = accessId.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(b64 + pad, "base64");
+  } catch {
+    return null;
+  }
+  if (buf.length !== 16) return null;
+  const hex = buf.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 // Send response — Vaultwarden Send::to_json (db/models/send.rs:140). Fully camelCase.
 // `size` inside data must be a STRING (mobile clients expect that).
 export function serializeSend(send: typeof sends.$inferSelect) {

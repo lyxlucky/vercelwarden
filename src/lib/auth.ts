@@ -67,33 +67,65 @@ export async function generateTokenPair(
 }
 
 // ─── Verify & Extract User from Bearer Token ──────────────
+// Logs the *reason* for every rejection at info level so 401s are diagnosable
+// in Vercel logs. The wire response stays opaque ("401") but the cause is
+// recoverable from runtime logs instead of guessing.
 export async function verifyAuth(authHeader: string | null): Promise<AuthResult | null> {
-  if (!authHeader?.startsWith("Bearer ")) return null;
+  if (!authHeader?.startsWith("Bearer ")) {
+    if (authHeader) console.info("verifyAuth: missing Bearer prefix");
+    return null;
+  }
 
   const token = authHeader.slice(7);
+  let payload: Record<string, unknown>;
   try {
-    const { payload } = await jwtVerify(token, getJwtSecret(), {
+    const result = await jwtVerify(token, getJwtSecret(), {
       issuer: "Bitwarden",
       audience: "Bitwarden",
     });
-
-    const userUuid = payload.sub as string;
-    const deviceUuid = payload.device as string;
-    const tokenSstamp = payload.sstamp as string | undefined;
-
-    const [user] = await db.select().from(users).where(eq(users.uuid, userUuid)).limit(1);
-    if (!user || !user.enabled) return null;
-
-    // Security stamp rotation invalidates outstanding access tokens.
-    if (tokenSstamp && tokenSstamp !== user.securityStamp) return null;
-
-    const [device] = await db.select().from(devices).where(eq(devices.uuid, deviceUuid)).limit(1);
-    if (!device || device.userUuid !== user.uuid) return null;
-
-    return { user, device };
-  } catch {
+    payload = result.payload as Record<string, unknown>;
+  } catch (e) {
+    console.info(
+      "verifyAuth: jwtVerify failed:",
+      e instanceof Error ? e.message : String(e)
+    );
     return null;
   }
+
+  const userUuid = payload.sub as string;
+  const deviceUuid = payload.device as string;
+  const tokenSstamp = payload.sstamp as string | undefined;
+
+  const [user] = await db.select().from(users).where(eq(users.uuid, userUuid)).limit(1);
+  if (!user) {
+    console.info(`verifyAuth: user ${userUuid} not found`);
+    return null;
+  }
+  if (!user.enabled) {
+    console.info(`verifyAuth: user ${userUuid} is disabled`);
+    return null;
+  }
+
+  if (tokenSstamp && tokenSstamp !== user.securityStamp) {
+    console.info(
+      `verifyAuth: sstamp mismatch for ${userUuid} (token=${tokenSstamp} db=${user.securityStamp})`
+    );
+    return null;
+  }
+
+  const [device] = await db.select().from(devices).where(eq(devices.uuid, deviceUuid)).limit(1);
+  if (!device) {
+    console.info(`verifyAuth: device ${deviceUuid} not found`);
+    return null;
+  }
+  if (device.userUuid !== user.uuid) {
+    console.info(
+      `verifyAuth: device ${deviceUuid} belongs to ${device.userUuid}, not ${user.uuid}`
+    );
+    return null;
+  }
+
+  return { user, device };
 }
 
 // ─── Build Bitwarden-compatible profile response (Vaultwarden 1.36.0) ──

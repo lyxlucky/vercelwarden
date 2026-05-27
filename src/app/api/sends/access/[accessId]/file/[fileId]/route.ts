@@ -5,9 +5,11 @@ import { eq } from "drizzle-orm";
 import { timingSafeEqual } from "node:crypto";
 import { jsonResponse, notFound, errorResponse } from "@/lib/responses";
 import { safeJsonParse } from "@/lib/cipher";
+import { uuidFromAccessId } from "@/lib/send";
 
 // POST /api/sends/access/[accessId]/file/[fileId] — public; returns the
-// download URL for a file send after access checks pass.
+// download URL for a file send after access checks pass. `accessId` is the
+// base64url-encoded UUID (Vaultwarden Send::find_by_access_id).
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ accessId: string; fileId: string }> }
@@ -16,7 +18,10 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const password = body?.password as string | undefined;
 
-  const [send] = await db.select().from(sends).where(eq(sends.uuid, accessId)).limit(1);
+  const sendUuid = uuidFromAccessId(accessId);
+  if (!sendUuid) return notFound("Send not found");
+
+  const [send] = await db.select().from(sends).where(eq(sends.uuid, sendUuid)).limit(1);
   if (!send || send.disabled || send.type !== 1) return notFound("Send not found");
 
   const now = new Date();
