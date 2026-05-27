@@ -4,6 +4,8 @@
 
 部署在 Vercel 免费层上的自托管 Bitwarden 兼容密码管理器。
 
+**在线预览：** https://vercelwarden.vercel.app/web-vault/index.html#/login
+
 完全兼容：
 - Bitwarden 浏览器扩展（Chrome / Firefox / Safari / Edge）
 - Bitwarden 桌面端（Windows / macOS / Linux）

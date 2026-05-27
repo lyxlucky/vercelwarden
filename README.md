@@ -4,6 +4,8 @@
 
 Self-hosted Bitwarden-compatible password manager running on Vercel's free tier.
 
+**Live demo:** https://vercelwarden.vercel.app/web-vault/index.html#/login
+
 Fully compatible with:
 - Bitwarden Browser Extensions (Chrome, Firefox, Safari, Edge)
 - Bitwarden Desktop (Windows, macOS, Linux)
