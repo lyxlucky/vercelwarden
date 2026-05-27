@@ -48,5 +48,5 @@ export async function DELETE(request: NextRequest) {
   if (!code) return errorResponse("Missing code");
 
   await db.delete(invitationCodes).where(eq(invitationCodes.code, code));
-  return jsonResponse({ Object: "invitation" });
+  return jsonResponse({ object: "invitation" });
 }

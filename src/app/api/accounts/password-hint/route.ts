@@ -1,19 +1,13 @@
 import { NextRequest } from "next/server";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { jsonResponse, errorResponse } from "@/lib/responses";
+import { errorResponse } from "@/lib/responses";
 
-// POST /api/accounts/password-hint — always 200; never reveal whether the
-// email is registered. If a hint exists we return it; otherwise empty string.
+// POST /api/accounts/password-hint — Vaultwarden returns an empty 200 to avoid
+// leaking whether the email is registered (accounts.rs:1183). Delivery would
+// happen via email; we don't have SMTP wired up, so we just acknowledge.
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const email = body?.email?.toLowerCase().trim();
   if (!email) return errorResponse("Email is required");
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  return jsonResponse({
-    MasterPasswordHint: user?.passwordHint ?? "",
-    Object: "password-hint",
-  });
+  return new Response(null, { status: 200 });
 }

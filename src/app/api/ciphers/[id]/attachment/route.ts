@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { ciphers, attachments } from "@/db/schema";
+import { ciphers, attachments, folderCiphers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import { verifyAuth, newUuid } from "@/lib/auth";
 import { jsonResponse, unauthorized, notFound, errorResponse } from "@/lib/responses";
+import { serializeCipher } from "@/lib/cipher";
 
 // POST /api/ciphers/[id]/attachment — upload attachment (legacy single-step).
-// New clients use the v2 flow; we mirror the legacy response shape here.
+// Vaultwarden returns the full cipher JSON (ciphers.rs:1382).
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -51,13 +52,21 @@ export async function POST(
     .set({ updatedAt: new Date() })
     .where(eq(ciphers.uuid, id));
 
-  return jsonResponse({
-    Id: attachmentId,
-    FileName: fileName,
-    Size: file.size,
-    SizeName: null,
-    Url: `${request.nextUrl.origin}/api/ciphers/${id}/attachment/${attachmentId}`,
-    Key: key,
-    Object: "attachment",
-  });
+  const [link] = await db
+    .select()
+    .from(folderCiphers)
+    .where(eq(folderCiphers.cipherUuid, id))
+    .limit(1);
+  const [updated] = await db.select().from(ciphers).where(eq(ciphers.uuid, id)).limit(1);
+  const cipherAttachments = await db
+    .select()
+    .from(attachments)
+    .where(eq(attachments.cipherUuid, id));
+  return jsonResponse(
+    serializeCipher(updated!, {
+      folderId: link?.folderUuid ?? null,
+      attachments: cipherAttachments,
+      origin: request.nextUrl.origin,
+    })
+  );
 }

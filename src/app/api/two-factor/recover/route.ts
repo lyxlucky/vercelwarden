@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { timingSafeEqual } from "node:crypto";
-import { jsonResponse, errorResponse } from "@/lib/responses";
+import { errorResponse } from "@/lib/responses";
 
 // POST /api/two-factor/recover — unauthenticated; disables 2FA when the
 // recovery code matches. Body: { email, masterPasswordHash, recoveryCode }
@@ -27,5 +27,5 @@ export async function POST(request: NextRequest) {
     .set({ totpSecret: null, totpRecover: null, updatedAt: new Date() })
     .where(eq(users.uuid, user.uuid));
 
-  return jsonResponse({ Object: "two-factor-recover" });
+  return new Response(null, { status: 200 });
 }

@@ -32,9 +32,8 @@ export async function POST(request: NextRequest) {
   const key = auth.user.totpSecret ?? generateTotpSecret();
 
   return jsonResponse({
-    Enabled: enabled,
-    Key: key,
-    Object: "twoFactorAuthenticator",
-    UserVerificationToken: null,
+    enabled,
+    key,
+    object: "twoFactorAuthenticator",
   });
 }

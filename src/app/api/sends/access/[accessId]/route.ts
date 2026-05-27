@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { sends } from "@/db/schema";
+import { sends, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { timingSafeEqual } from "node:crypto";
 import { jsonResponse, notFound, errorResponse } from "@/lib/responses";
-import { safeJsonParse } from "@/lib/cipher";
+import { serializeSendAccess } from "@/lib/send";
 
 // POST /api/sends/access/[accessId] — public; recipients POST the access password.
-// Returns the (still client-encrypted) Send payload.
+// Returns the (still client-encrypted) Send payload using the to_json_access shape.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ accessId: string }> }
@@ -30,7 +30,7 @@ export async function POST(
 
   if (send.password) {
     if (!password) {
-      return errorResponse("Password required", 401, { Password: ["Required"] });
+      return errorResponse("Password required", 401, { password: ["Required"] });
     }
     const a = Buffer.from(password);
     const b = Buffer.from(send.password);
@@ -44,18 +44,12 @@ export async function POST(
     .set({ accessCount: send.accessCount + 1, updatedAt: new Date() })
     .where(eq(sends.uuid, send.uuid));
 
-  const data = safeJsonParse<Record<string, unknown>>(send.data) ?? {};
+  // creatorIdentifier is the creator email unless hideEmail is set.
+  let creatorIdentifier: string | null = null;
+  if (!send.hideEmail) {
+    const [owner] = await db.select().from(users).where(eq(users.uuid, send.userUuid)).limit(1);
+    creatorIdentifier = owner?.email ?? null;
+  }
 
-  return jsonResponse({
-    Id: send.uuid,
-    Type: send.type,
-    Name: send.name,
-    Notes: send.notes,
-    Key: send.key,
-    Text: send.type === 0 ? data : null,
-    File: send.type === 1 ? data : null,
-    ExpirationDate: send.expirationDate?.toISOString() ?? null,
-    CreatorIdentifier: send.hideEmail ? null : null,
-    Object: "send-access",
-  });
+  return jsonResponse(serializeSendAccess(send, creatorIdentifier));
 }

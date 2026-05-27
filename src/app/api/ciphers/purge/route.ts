@@ -4,7 +4,7 @@ import { ciphers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/ciphers/purge — permanently delete every cipher the user owns
 // (including soft-deleted ones).
@@ -24,11 +24,9 @@ export async function POST(request: NextRequest) {
   );
   if (!ok) return errorResponse("Invalid password");
 
-  // Optional `?organizationId=` purge org ciphers only; we don't support
-  // organizations yet, so always purge personal vault.
   await db
     .delete(ciphers)
     .where(and(eq(ciphers.userUuid, auth.user.uuid), isNull(ciphers.organizationUuid)));
 
-  return jsonResponse({ Object: "purge" });
+  return new Response(null, { status: 200 });
 }

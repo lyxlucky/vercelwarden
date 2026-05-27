@@ -1,14 +1,19 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, invitationCodes } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { jsonResponse, errorResponse } from "@/lib/responses";
+import { errorResponse } from "@/lib/responses";
 import { signRegistrationToken } from "@/lib/registration-token";
 
 // POST /identity/accounts/register/send-verification-email
-// We do not actually send email (no SMTP). The token is returned in-band so
-// the client can complete /register/finish immediately. With invite-code mode
-// on, the caller must still pass a valid invite token at /register/finish.
+// No SMTP — we mirror Vaultwarden's "mail disabled" branch: return the
+// verification token as a plain JSON string body so the Web Vault skips the
+// "check your email" UI and goes straight to the password-entry step, which
+// then calls /register/finish with the token.
+//
+// Response contract (matches Vaultwarden 1.36.0):
+//   - mail disabled: 200 OK, body = JSON-encoded string (the token)
+//   - mail enabled:  204 No Content
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body) return errorResponse("Invalid JSON body");
@@ -33,8 +38,9 @@ export async function POST(request: NextRequest) {
 
   const token = await signRegistrationToken({ email, name });
 
-  return jsonResponse({
-    object: "send-verification-email",
-    emailVerificationToken: token,
+  // JSON-encoded string body — NOT an object wrapper.
+  return new NextResponse(JSON.stringify(token), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
   });
 }

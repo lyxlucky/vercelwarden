@@ -8,7 +8,7 @@ import {
   newSalt,
   verifyPassword,
 } from "@/lib/password";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/kdf — change client-side KDF settings.
 // Changing KDF reissues both `key` (encrypted with new master key) and
@@ -56,5 +56,5 @@ export async function POST(request: NextRequest) {
     })
     .where(eq(users.uuid, auth.user.uuid));
 
-  return jsonResponse({ Object: "kdf" });
+  return new Response(null, { status: 200 });
 }

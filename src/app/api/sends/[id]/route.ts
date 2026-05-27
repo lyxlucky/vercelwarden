@@ -42,37 +42,47 @@ export async function PUT(
     .limit(1);
   if (!existing) return notFound("Send not found");
 
-  const body = await request.json().catch(() => null);
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return errorResponse("Invalid JSON body");
 
   const dataField =
     existing.type === 0
-      ? body.Text ?? body.text
-      : body.File ?? body.file;
+      ? body.text ?? body.Text
+      : body.file ?? body.File;
+
+  const passwordProvided =
+    body.password !== undefined ||
+    body.Password !== undefined;
+
+  const maxAccessProvided =
+    body.maxAccessCount !== undefined ||
+    body.MaxAccessCount !== undefined;
+  const maxAccessRaw = body.maxAccessCount ?? body.MaxAccessCount;
+  const maxAccess = typeof maxAccessRaw === "number"
+    ? maxAccessRaw
+    : typeof maxAccessRaw === "string"
+      ? parseInt(maxAccessRaw)
+      : null;
 
   await db
     .update(sends)
     .set({
-      name: (body.Name ?? body.name ?? existing.name) as string,
-      notes: (body.Notes ?? body.notes ?? existing.notes) as string | null,
+      name: ((body.name ?? body.Name) as string) ?? existing.name,
+      notes: ((body.notes ?? body.Notes) as string | null) ?? existing.notes,
       data: dataField ? JSON.stringify(dataField) : existing.data,
-      key: (body.Key ?? body.key ?? existing.key) as string,
-      password:
-        body.Password === undefined && body.password === undefined
-          ? existing.password
-          : ((body.Password ?? body.password) as string | null),
-      maxAccessCount:
-        body.MaxAccessCount === undefined && body.maxAccessCount === undefined
-          ? existing.maxAccessCount
-          : ((body.MaxAccessCount ?? body.maxAccessCount) as number | null),
-      expirationDate: body.ExpirationDate
-        ? new Date(body.ExpirationDate as string)
+      key: ((body.key ?? body.Key) as string) ?? existing.key,
+      password: passwordProvided
+        ? ((body.password ?? body.Password) as string | null) ?? null
+        : existing.password,
+      maxAccessCount: maxAccessProvided ? maxAccess : existing.maxAccessCount,
+      expirationDate: body.expirationDate || body.ExpirationDate
+        ? new Date((body.expirationDate ?? body.ExpirationDate) as string)
         : existing.expirationDate,
-      deletionDate: body.DeletionDate
-        ? new Date(body.DeletionDate as string)
+      deletionDate: body.deletionDate || body.DeletionDate
+        ? new Date((body.deletionDate ?? body.DeletionDate) as string)
         : existing.deletionDate,
-      disabled: (body.Disabled ?? body.disabled ?? existing.disabled) as boolean,
-      hideEmail: (body.HideEmail ?? body.hideEmail ?? existing.hideEmail) as boolean,
+      disabled: Boolean(body.disabled ?? body.Disabled ?? existing.disabled),
+      hideEmail: Boolean(body.hideEmail ?? body.HideEmail ?? existing.hideEmail),
       updatedAt: new Date(),
     })
     .where(eq(sends.uuid, id));
@@ -97,18 +107,17 @@ export async function DELETE(
     .limit(1);
   if (!send) return notFound("Send not found");
 
-  // Best-effort blob cleanup for file sends.
   if (send.type === 1) {
     const data = safeJsonParse<{ url?: string }>(send.data);
     if (data?.url) {
       try {
         await del(data.url);
       } catch {
-        // ignore; best-effort
+        // best-effort
       }
     }
   }
 
   await db.delete(sends).where(eq(sends.uuid, id));
-  return jsonResponse({ Object: "send" });
+  return jsonResponse({ object: "send" });
 }

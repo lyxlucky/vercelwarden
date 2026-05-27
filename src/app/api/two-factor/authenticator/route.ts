@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest) {
 
   if (!verifyTotp(key, token)) {
     return errorResponse("Invalid authenticator code", 400, {
-      Token: ["Invalid code"],
+      token: ["Invalid code"],
     });
   }
 
@@ -45,9 +45,9 @@ export async function PUT(request: NextRequest) {
     .where(eq(users.uuid, auth.user.uuid));
 
   return jsonResponse({
-    Enabled: true,
-    Key: key,
-    Object: "twoFactorAuthenticator",
+    enabled: true,
+    key,
+    object: "twoFactorAuthenticator",
   });
 }
 

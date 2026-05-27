@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/verify-password — used by clients to gate sensitive ops.
 export async function POST(request: NextRequest) {
@@ -20,5 +20,5 @@ export async function POST(request: NextRequest) {
   );
   if (!ok) return errorResponse("Invalid password");
 
-  return jsonResponse({ Object: "verify-password" });
+  return new Response(null, { status: 200 });
 }

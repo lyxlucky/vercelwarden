@@ -4,7 +4,7 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
 import { hashPassword, newSalt, verifyPassword } from "@/lib/password";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/password — change master password
 export async function POST(request: NextRequest) {
@@ -42,5 +42,5 @@ export async function POST(request: NextRequest) {
     })
     .where(eq(users.uuid, auth.user.uuid));
 
-  return jsonResponse({ Object: "password" });
+  return new Response(null, { status: 200 });
 }

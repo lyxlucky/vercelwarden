@@ -30,9 +30,9 @@ export async function PUT(request: NextRequest) {
     .where(eq(users.uuid, auth.user.uuid));
 
   return jsonResponse({
-    Enabled: false,
-    Type: body?.type ?? 0,
-    Object: "twoFactorProvider",
+    enabled: false,
+    type: body?.type ?? 0,
+    object: "twoFactorProvider",
   });
 }
 

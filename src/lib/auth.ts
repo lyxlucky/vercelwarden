@@ -18,24 +18,6 @@ function getJwtSecret(): Uint8Array {
   return _jwtSecret;
 }
 
-// ─── Types ────────────────────────────────────────────────
-export interface AuthUser {
-  uuid: string;
-  email: string;
-  name: string;
-  emailVerified: boolean;
-  premium: boolean;
-  masterPasswordHint: string | null;
-  culture: string;
-  twoFactorEnabled: boolean;
-  key: string;
-  privateKey: string | null;
-  securityStamp: string;
-  forcePasswordReset: boolean;
-  avatarColor: string | null;
-  creationDate: string;
-}
-
 export interface AuthResult {
   user: typeof users.$inferSelect;
   device: typeof devices.$inferSelect;
@@ -114,25 +96,37 @@ export async function verifyAuth(authHeader: string | null): Promise<AuthResult 
   }
 }
 
-// ─── Build Bitwarden-compatible profile response ──────────
-export function buildProfile(user: typeof users.$inferSelect): AuthUser {
+// ─── Build Bitwarden-compatible profile response (Vaultwarden 1.36.0) ──
+// Wire format is fully camelCase. Field set matches User::to_json in
+// db/models/user.rs so newer Bitwarden clients can parse it.
+export function buildProfile(user: typeof users.$inferSelect) {
+  const status = (user.passwordHash as Uint8Array).length === 0 ? 0 : 2; // Invited=0, Enabled=2
   return {
-    uuid: user.uuid,
-    email: user.email,
+    _status: status,
+    id: user.uuid,
     name: user.name,
+    email: user.email,
     emailVerified: !!user.verifiedAt,
     premium: true,
+    premiumFromOrganization: false,
     masterPasswordHint: user.passwordHint,
     culture: "en-US",
     twoFactorEnabled: !!user.totpSecret,
     key: user.akey,
     privateKey: user.privateKey,
     securityStamp: user.securityStamp,
+    organizations: [] as unknown[],
+    providers: [] as unknown[],
+    providerOrganizations: [] as unknown[],
     forcePasswordReset: false,
     avatarColor: user.avatarColor,
+    usesKeyConnector: false,
     creationDate: user.createdAt.toISOString(),
+    object: "profile",
   };
 }
+
+export type ProfileResponse = ReturnType<typeof buildProfile>;
 
 // ─── Generate UUID ────────────────────────────────────────
 export function newUuid(): string {

@@ -4,7 +4,6 @@ import { users, devices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import {
   generateTokenPair,
-  buildProfile,
   newUuid,
   verifyRefreshToken,
 } from "@/lib/auth";
@@ -126,7 +125,7 @@ async function handlePasswordLogin(formData: FormData) {
     refreshToken,
     expiresIn: 3600,
     tokenType: "Bearer",
-    user: buildProfile(user),
+    user,
     masterPasswordPolicy: null,
   });
 }
@@ -166,7 +165,7 @@ async function handleRefreshToken(formData: FormData) {
     refreshToken: newRefreshToken,
     expiresIn: 3600,
     tokenType: "Bearer",
-    user: buildProfile(user),
+    user,
     masterPasswordPolicy: null,
   });
 }

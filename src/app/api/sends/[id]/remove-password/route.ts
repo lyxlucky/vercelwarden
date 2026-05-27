@@ -26,5 +26,5 @@ export async function PUT(
     .set({ password: null, updatedAt: new Date() })
     .where(eq(sends.uuid, id));
 
-  return jsonResponse({ Object: "send", Id: id });
+  return jsonResponse({ object: "send", id });
 }

@@ -8,7 +8,7 @@ import {
   newSalt,
   DEFAULT_SERVER_PBKDF2_ITER,
 } from "@/lib/password";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/set-password — used by SSO/key-connector flows where the
 // account exists without a master password. Sets one for the first time.
@@ -38,5 +38,5 @@ export async function POST(request: NextRequest) {
     })
     .where(eq(users.uuid, auth.user.uuid));
 
-  return jsonResponse({ Object: "set-password" });
+  return new Response(null, { status: 200 });
 }

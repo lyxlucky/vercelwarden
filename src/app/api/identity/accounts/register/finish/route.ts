@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
-import { buildProfile } from "@/lib/auth";
 import { createUser } from "@/lib/register";
 import { verifyRegistrationToken } from "@/lib/registration-token";
 import { jsonResponse, errorResponse } from "@/lib/responses";
 
 // POST /identity/accounts/register/finish
-// Two-step registration: caller must first hit /send-verification-email to
-// obtain emailVerificationToken, then send the full registration payload here.
+// Body contract (matches Vaultwarden 1.36.0 RegisterData). Field name aliases
+// matter — the modern Web Vault sends `userSymmetricKey` / `userAsymmetricKeys`,
+// while CLI / older clients send `key` / `keys`. Both must work.
+//
+// Response is the minimal Vaultwarden shape so the client knows to follow up
+// with a fresh /identity/connect/token call (auto-login).
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body) return errorResponse("Invalid JSON body");
@@ -17,18 +20,35 @@ export async function POST(request: NextRequest) {
   const claims = await verifyRegistrationToken(token);
   if (!claims) return errorResponse("Invalid or expired verification token");
 
+  // Body may include an email; if so it must match the token's claim.
+  const bodyEmail = body?.email?.toLowerCase().trim();
+  if (bodyEmail && bodyEmail !== claims.email) {
+    return errorResponse("Email does not match verification token");
+  }
+
+  // Accept both modern (`userAsymmetricKeys`) and legacy (`keys`) field names.
+  const keys = body.userAsymmetricKeys ?? body.keys ?? {};
+  const symmetricKey = body.userSymmetricKey ?? body.key;
+
+  if (!symmetricKey || !keys.encryptedPrivateKey || !keys.publicKey) {
+    return errorResponse("Missing required key material", 400, {
+      key: !symmetricKey ? ["userSymmetricKey is required"] : [],
+      keys: !keys.encryptedPrivateKey || !keys.publicKey
+        ? ["userAsymmetricKeys.{encryptedPrivateKey,publicKey} are required"]
+        : [],
+    });
+  }
+
   const result = await createUser({
     email: claims.email,
-    name: claims.name,
+    name: body.name ?? claims.name,
     masterPasswordHash: body.masterPasswordHash,
     masterPasswordHint: body.masterPasswordHint,
-    key: body.key,
-    privateKey: body.privateKey,
-    publicKey: body.publicKey?.encryptedPrivateKey
-      ? body.publicKey.encryptedPrivateKey
-      : body.publicKey,
-    token: body.token, // invite code (when REQUIRE_INVITE_CODE)
-    kdfType: body.kdfType ?? body.kdf,
+    key: symmetricKey,
+    privateKey: keys.encryptedPrivateKey,
+    publicKey: keys.publicKey,
+    token: body.token ?? body.orgInviteToken,
+    kdfType: body.kdf,
     kdfIterations: body.kdfIterations,
     kdfMemory: body.kdfMemory,
     kdfParallelism: body.kdfParallelism,
@@ -53,5 +73,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return jsonResponse(buildProfile(result.user));
+  // Vaultwarden's exact response shape — the client follows up with a
+  // password-grant /connect/token call to actually log in.
+  return jsonResponse({
+    object: "register",
+    captchaBypassToken: "",
+  });
 }

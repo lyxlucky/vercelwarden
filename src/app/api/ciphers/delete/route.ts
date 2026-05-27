@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { ciphers } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // PUT /api/ciphers/delete — bulk soft-delete (move-to-trash).
 // Body: { ids: string[] }
@@ -21,5 +21,13 @@ export async function PUT(request: NextRequest) {
     .set({ deletedAt: now, updatedAt: now })
     .where(and(inArray(ciphers.uuid, ids), eq(ciphers.userUuid, auth.user.uuid)));
 
-  return jsonResponse({ Object: "delete" });
+  return new Response(null, { status: 200 });
+}
+
+export async function POST(request: NextRequest) {
+  return PUT(request);
+}
+
+export async function DELETE(request: NextRequest) {
+  return PUT(request);
 }

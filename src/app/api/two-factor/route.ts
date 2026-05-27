@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   const data: Array<Record<string, unknown>> = [];
   if (auth.user.totpSecret) {
-    data.push({ Enabled: true, Type: 0, Object: "twoFactorProvider" });
+    data.push({ enabled: true, type: 0, object: "twoFactorProvider" });
   }
 
   return jsonResponse({ data, object: "list", continuationToken: null });

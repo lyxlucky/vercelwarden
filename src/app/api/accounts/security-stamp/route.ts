@@ -4,7 +4,7 @@ import { users, devices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/security-stamp — rotate the user's security stamp;
 // invalidates all outstanding access tokens and refresh tokens.
@@ -36,5 +36,5 @@ export async function POST(request: NextRequest) {
     .set({ refreshToken: "", updatedAt: new Date() })
     .where(eq(devices.userUuid, auth.user.uuid));
 
-  return jsonResponse({ Object: "security-stamp" });
+  return new Response(null, { status: 200 });
 }

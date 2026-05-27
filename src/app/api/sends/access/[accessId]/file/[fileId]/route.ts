@@ -30,7 +30,7 @@ export async function POST(
 
   if (send.password) {
     if (!password) {
-      return errorResponse("Password required", 401, { Password: ["Required"] });
+      return errorResponse("Password required", 401, { password: ["Required"] });
     }
     const a = Buffer.from(password);
     const b = Buffer.from(send.password);
@@ -39,12 +39,13 @@ export async function POST(
     }
   }
 
-  const data = safeJsonParse<{ Id?: string; url?: string }>(send.data);
-  if (!data || data.Id !== fileId || !data.url) return notFound("File not found");
+  const data = safeJsonParse<{ id?: string; Id?: string; url?: string }>(send.data);
+  const fileMatches = data && (data.id === fileId || data.Id === fileId);
+  if (!data || !fileMatches || !data.url) return notFound("File not found");
 
   return jsonResponse({
-    Object: "send-file-download",
-    Id: send.uuid,
-    Url: data.url,
+    object: "send-file-download",
+    id: send.uuid,
+    url: data.url,
   });
 }

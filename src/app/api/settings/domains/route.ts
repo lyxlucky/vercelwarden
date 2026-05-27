@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   if (!auth) return unauthorized();
 
   return jsonResponse({
-    EquivalentDomains: JSON.parse(auth.user.equivalentDomains),
-    GlobalEquivalentDomains: [],
-    Object: "domains",
+    equivalentDomains: JSON.parse(auth.user.equivalentDomains),
+    globalEquivalentDomains: [],
+    object: "domains",
   });
 }

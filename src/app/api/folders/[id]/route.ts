@@ -3,16 +3,8 @@ import { db } from "@/db";
 import { folders } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
-import { jsonResponse, unauthorized, notFound } from "@/lib/responses";
-
-function serializeFolder(folder: typeof folders.$inferSelect) {
-  return {
-    Id: folder.uuid,
-    Name: folder.name,
-    RevisionDate: folder.updatedAt.toISOString(),
-    Object: "folder",
-  };
-}
+import { jsonResponse, unauthorized, notFound, errorResponse } from "@/lib/responses";
+import { serializeFolder } from "@/lib/folder";
 
 // GET /api/folders/[id]
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,19 +28,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth) return unauthorized();
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  const newName = body?.name ?? body?.Name;
+  if (!newName) return errorResponse("name is required");
 
   const [existing] = await db
     .select()
     .from(folders)
     .where(and(eq(folders.uuid, id), eq(folders.userUuid, auth.user.uuid)))
     .limit(1);
-
   if (!existing) return notFound("Folder not found");
 
   await db
     .update(folders)
-    .set({ name: body.Name ?? existing.name, updatedAt: new Date() })
+    .set({ name: newName, updatedAt: new Date() })
     .where(eq(folders.uuid, id));
 
   const [updated] = await db.select().from(folders).where(eq(folders.uuid, id)).limit(1);
@@ -61,15 +54,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth) return unauthorized();
 
   const { id } = await params;
-
   const [existing] = await db
     .select()
     .from(folders)
     .where(and(eq(folders.uuid, id), eq(folders.userUuid, auth.user.uuid)))
     .limit(1);
-
   if (!existing) return notFound("Folder not found");
 
   await db.delete(folders).where(eq(folders.uuid, id));
-  return jsonResponse({ Object: "folder" });
+  return jsonResponse({ object: "folder" });
 }

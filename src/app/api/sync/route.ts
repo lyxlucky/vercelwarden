@@ -6,9 +6,13 @@ import { verifyAuth, buildProfile } from "@/lib/auth";
 import { jsonResponse, unauthorized } from "@/lib/responses";
 import { serializeCipher } from "@/lib/cipher";
 import { serializeSend } from "@/lib/send";
+import { serializeFolder } from "@/lib/folder";
 
-// GET /api/sync
-// Returns all vault data for the authenticated user.
+// GET /api/sync?excludeDomains=true
+// Wire format matches Vaultwarden ciphers.rs:121-202 — fully camelCase top-level
+// with a `userDecryption.masterPasswordUnlock` sub-object that uses the newer
+// (camelCase) MasterPasswordUnlock schema (note this differs from the token
+// endpoint's PascalCase variant — upstream's own inconsistency).
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request.headers.get("authorization"));
   if (!auth) return unauthorized();
@@ -20,7 +24,7 @@ export async function GET(request: NextRequest) {
   const userCiphers = await db
     .select()
     .from(ciphers)
-    .where(and(eq(ciphers.userUuid, user.uuid), isNull(ciphers.deletedAt)));
+    .where(eq(ciphers.userUuid, user.uuid));
 
   const userFolders = await db
     .select()
@@ -51,51 +55,44 @@ export async function GET(request: NextRequest) {
 
   const userSends = await db.select().from(sends).where(eq(sends.userUuid, user.uuid));
 
-  const profile = buildProfile(user);
+  const hasMasterPassword = (user.passwordHash as Uint8Array | null)?.length ?? 0 > 0;
+  const masterPasswordUnlock = hasMasterPassword
+    ? {
+        kdf: {
+          kdfType: user.clientKdfType,
+          iterations: user.clientKdfIter,
+          memory: user.clientKdfMemory,
+          parallelism: user.clientKdfParallelism,
+        },
+        masterKeyEncryptedUserKey: user.akey,
+        masterKeyWrappedUserKey: user.akey,
+        salt: user.email,
+      }
+    : null;
 
   return jsonResponse({
-    Profile: {
-      ...profile,
-      Organizations: [],
-      Providers: [],
-      ProviderOrganizations: [],
-      Object: "profile",
-    },
-    Folders: userFolders.map((f) => ({
-      Id: f.uuid,
-      Name: f.name,
-      RevisionDate: f.updatedAt.toISOString(),
-      Object: "folder",
-    })),
-    Collections: [],
-    Ciphers: userCiphers.map((c) => {
-      const cAtts = attachmentsByCipher.get(c.uuid);
-      const att = cAtts
-        ? cAtts.map((a) => ({
-            Id: a.uuid,
-            FileName: a.fileName,
-            Size: a.fileSize,
-            SizeName: null,
-            Url: `${origin}/api/ciphers/${c.uuid}/attachment/${a.uuid}`,
-            Key: a.key ?? null,
-            Object: "attachment" as const,
-          }))
-        : null;
-      return serializeCipher(c, {
+    profile: buildProfile(user),
+    folders: userFolders.map(serializeFolder),
+    collections: [],
+    policies: [],
+    ciphers: userCiphers.map((c) =>
+      serializeCipher(c, {
         folderId: folderByCipher.get(c.uuid) ?? null,
-        attachments: att,
-      });
-    }),
-    Domains: excludeDomains
+        attachments: attachmentsByCipher.get(c.uuid) ?? null,
+        origin,
+      })
+    ),
+    domains: excludeDomains
       ? null
       : {
-          EquivalentDomains: JSON.parse(user.equivalentDomains),
-          GlobalEquivalentDomains: [],
-          Object: "domains",
+          equivalentDomains: JSON.parse(user.equivalentDomains),
+          globalEquivalentDomains: [],
+          object: "domains",
         },
-    Policies: [],
-    Sends: userSends.map(serializeSend),
-    UnofficialServer: true,
-    Object: "sync",
+    sends: userSends.map(serializeSend),
+    userDecryption: {
+      masterPasswordUnlock,
+    },
+    object: "sync",
   });
 }

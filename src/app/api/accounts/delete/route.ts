@@ -4,7 +4,7 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/accounts/delete — permanently delete the current user's account.
 export async function POST(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   if (!ok) return errorResponse("Invalid password");
 
   await db.delete(users).where(eq(users.uuid, auth.user.uuid));
-  return jsonResponse({ Object: "delete" });
+  return new Response(null, { status: 200 });
 }
 
 // DELETE /api/accounts — alias for legacy clients

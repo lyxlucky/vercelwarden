@@ -23,5 +23,9 @@ export async function POST(request: NextRequest) {
     .set({ publicKey, privateKey, updatedAt: new Date() })
     .where(eq(users.uuid, auth.user.uuid));
 
-  return jsonResponse({ Object: "keys" });
+  return jsonResponse({
+    privateKey,
+    publicKey,
+    object: "keys",
+  });
 }

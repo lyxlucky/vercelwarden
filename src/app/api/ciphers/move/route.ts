@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { ciphers, folderCiphers } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 
 // POST /api/ciphers/move
 // Body: { ids: string[], folderId: string | null }
@@ -16,13 +16,12 @@ export async function POST(request: NextRequest) {
   const folderId: string | null = body?.folderId ?? null;
   if (ids.length === 0) return errorResponse("ids is required");
 
-  // Confirm every cipher belongs to the user.
   const owned = await db
     .select({ uuid: ciphers.uuid })
     .from(ciphers)
     .where(and(inArray(ciphers.uuid, ids), eq(ciphers.userUuid, auth.user.uuid)));
   const ownedIds = owned.map((c) => c.uuid);
-  if (ownedIds.length === 0) return jsonResponse({ Object: "move" });
+  if (ownedIds.length === 0) return new Response(null, { status: 200 });
 
   await db.delete(folderCiphers).where(inArray(folderCiphers.cipherUuid, ownedIds));
   if (folderId) {
@@ -37,5 +36,9 @@ export async function POST(request: NextRequest) {
     .set({ updatedAt: now })
     .where(inArray(ciphers.uuid, ownedIds));
 
-  return jsonResponse({ Object: "move" });
+  return new Response(null, { status: 200 });
+}
+
+export async function PUT(request: NextRequest) {
+  return POST(request);
 }
