@@ -1,9 +1,10 @@
 -- Vercelwarden Database Schema
 -- Compatible with Turso / SQLite
--- Generated: 2026-05-27
+-- Generated: 2026-05-27 (revised 2026-05-27 — Bitwarden parity pass)
 
 -- ============================================
--- Users (用户表)
+-- Users
+-- password_hash = server-side PBKDF2-SHA256(clientMasterPasswordHash, salt, password_iterations)
 -- ============================================
 CREATE TABLE IF NOT EXISTS `users` (
   `uuid` text PRIMARY KEY NOT NULL,
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 CREATE UNIQUE INDEX IF NOT EXISTS `users_email_unique` ON `users` (`email`);
 
 -- ============================================
--- Devices (设备/会话表)
+-- Devices (login sessions)
 -- ============================================
 CREATE TABLE IF NOT EXISTS `devices` (
   `uuid` text PRIMARY KEY NOT NULL,
@@ -53,8 +54,8 @@ CREATE TABLE IF NOT EXISTS `devices` (
 );
 
 -- ============================================
--- Ciphers (保险库条目表)
--- Type: 1=Login, 2=SecureNote, 3=Card, 4=Identity
+-- Ciphers (vault items)
+-- Type: 1=Login, 2=SecureNote, 3=Card, 4=Identity, 5=SshKey
 -- ============================================
 CREATE TABLE IF NOT EXISTS `ciphers` (
   `uuid` text PRIMARY KEY NOT NULL,
@@ -77,7 +78,7 @@ CREATE TABLE IF NOT EXISTS `ciphers` (
 );
 
 -- ============================================
--- Folders (文件夹表)
+-- Folders
 -- ============================================
 CREATE TABLE IF NOT EXISTS `folders` (
   `uuid` text PRIMARY KEY NOT NULL,
@@ -89,7 +90,7 @@ CREATE TABLE IF NOT EXISTS `folders` (
 );
 
 -- ============================================
--- Folder ↔ Cipher 关联表
+-- Folder ↔ Cipher junction
 -- ============================================
 CREATE TABLE IF NOT EXISTS `folder_ciphers` (
   `folder_uuid` text NOT NULL,
@@ -99,7 +100,7 @@ CREATE TABLE IF NOT EXISTS `folder_ciphers` (
 );
 
 -- ============================================
--- Attachments (附件表)
+-- Attachments
 -- ============================================
 CREATE TABLE IF NOT EXISTS `attachments` (
   `uuid` text PRIMARY KEY NOT NULL,
@@ -107,12 +108,38 @@ CREATE TABLE IF NOT EXISTS `attachments` (
   `created_at` integer NOT NULL,
   `file_name` text NOT NULL,
   `file_size` integer NOT NULL,
+  `key` text,
   `blob_url` text NOT NULL,
   FOREIGN KEY (`cipher_uuid`) REFERENCES `ciphers`(`uuid`) ON DELETE cascade
 );
 
 -- ============================================
--- Invitation Codes (邀请码表)
+-- Sends (Bitwarden Send: one-time encrypted shares)
+-- Type: 0=Text, 1=File
+-- ============================================
+CREATE TABLE IF NOT EXISTS `sends` (
+  `uuid` text PRIMARY KEY NOT NULL,
+  `user_uuid` text NOT NULL,
+  `organization_uuid` text,
+  `name` text NOT NULL,
+  `notes` text,
+  `type` integer NOT NULL,
+  `data` text NOT NULL,
+  `key` text NOT NULL,
+  `password` text,
+  `max_access_count` integer,
+  `access_count` integer DEFAULT 0 NOT NULL,
+  `created_at` integer NOT NULL,
+  `updated_at` integer NOT NULL,
+  `expiration_date` integer,
+  `deletion_date` integer NOT NULL,
+  `disabled` integer DEFAULT false NOT NULL,
+  `hide_email` integer DEFAULT false NOT NULL,
+  FOREIGN KEY (`user_uuid`) REFERENCES `users`(`uuid`) ON DELETE cascade
+);
+
+-- ============================================
+-- Invitation Codes
 -- ============================================
 CREATE TABLE IF NOT EXISTS `invitation_codes` (
   `code` text PRIMARY KEY NOT NULL,

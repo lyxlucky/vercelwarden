@@ -2,14 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { jsonResponse, unauthorized } from "@/lib/responses";
-
-function checkAdminAuth(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Basic ")) return false;
-  const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
-  const [, password] = decoded.split(":");
-  return password === process.env.ADMIN_PASSWORD;
-}
+import { checkAdminAuth } from "@/lib/admin";
 
 // GET /api/admin/users — list all registered users
 export async function GET(request: NextRequest) {

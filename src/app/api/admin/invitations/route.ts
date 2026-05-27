@@ -1,17 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { invitationCodes } from "@/db/schema";
-import { isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { jsonResponse, unauthorized } from "@/lib/responses";
-
-function checkAdminAuth(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Basic ")) return false;
-  const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
-  const [, password] = decoded.split(":");
-  return password === process.env.ADMIN_PASSWORD;
-}
+import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { checkAdminAuth } from "@/lib/admin";
 
 // GET /api/admin/invitations — list all invitation codes
 export async function GET(request: NextRequest) {
@@ -22,7 +15,7 @@ export async function GET(request: NextRequest) {
     data: codes.map((c) => ({
       code: c.code,
       createdAt: c.createdAt.toISOString(),
-      usedAt: c.usedAt?.toISOString() || null,
+      usedAt: c.usedAt?.toISOString() ?? null,
       usedBy: c.usedBy,
       createdBy: c.createdBy,
     })),
@@ -50,11 +43,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorized("Invalid admin password");
 
-  const body = await request.json();
-  const code = body.code;
-  if (!code) return unauthorized("Missing code");
+  const body = await request.json().catch(() => null);
+  const code = body?.code;
+  if (!code) return errorResponse("Missing code");
 
-  const { eq } = await import("drizzle-orm");
   await db.delete(invitationCodes).where(eq(invitationCodes.code, code));
   return jsonResponse({ Object: "invitation" });
 }

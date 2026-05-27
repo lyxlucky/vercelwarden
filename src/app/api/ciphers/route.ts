@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { ciphers, folderCiphers } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
-import { jsonResponse, unauthorized, errorResponse, notFound } from "@/lib/responses";
+import { jsonResponse, unauthorized } from "@/lib/responses";
+import { extractCipherData, serializeCipher } from "@/lib/cipher";
 
 // GET /api/ciphers — list all ciphers for the user
 export async function GET(request: NextRequest) {
@@ -15,8 +16,19 @@ export async function GET(request: NextRequest) {
     .from(ciphers)
     .where(eq(ciphers.userUuid, auth.user.uuid));
 
+  const cipherUuids = userCiphers.map((c) => c.uuid);
+  const links = cipherUuids.length
+    ? await db
+        .select()
+        .from(folderCiphers)
+        .where(inArray(folderCiphers.cipherUuid, cipherUuids))
+    : [];
+  const folderByCipher = new Map(links.map((l) => [l.cipherUuid, l.folderUuid]));
+
   return jsonResponse({
-    data: userCiphers.map(serializeCipher),
+    data: userCiphers.map((c) =>
+      serializeCipher(c, { folderId: folderByCipher.get(c.uuid) ?? null })
+    ),
     object: "list",
     continuationToken: null,
   });
@@ -49,7 +61,6 @@ export async function POST(request: NextRequest) {
     reprompt: body.Reprompt || 0,
   });
 
-  // Handle folder assignment
   if (body.FolderId) {
     await db.insert(folderCiphers).values({
       folderUuid: body.FolderId,
@@ -57,43 +68,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Fetch created cipher
   const [created] = await db.select().from(ciphers).where(eq(ciphers.uuid, cipherId)).limit(1);
-  return jsonResponse(serializeCipher(created!), 200);
-}
-
-// ─── Helpers ──────────────────────────────────────────────
-function extractCipherData(body: Record<string, unknown>) {
-  // Extract type-specific data from the request body
-  // Bitwarden client sends data in nested objects: Login, SecureNote, Card, Identity
-  for (const key of ["Login", "SecureNote", "Card", "Identity"]) {
-    if (body[key]) return body[key];
-  }
-  return {};
-}
-
-export function serializeCipher(cipher: typeof ciphers.$inferSelect) {
-  return {
-    Id: cipher.uuid,
-    Type: cipher.type,
-    Name: cipher.name,
-    Notes: cipher.notes,
-    Fields: cipher.fields ? JSON.parse(cipher.fields) : null,
-    Login: cipher.type === 1 ? JSON.parse(cipher.data) : null,
-    SecureNote: cipher.type === 2 ? JSON.parse(cipher.data) : null,
-    Card: cipher.type === 3 ? JSON.parse(cipher.data) : null,
-    Identity: cipher.type === 4 ? JSON.parse(cipher.data) : null,
-    OrganizationId: cipher.organizationUuid,
-    FolderId: null, // resolved from junction table
-    Favorite: cipher.favorite,
-    Edit: cipher.edit,
-    Reprompt: cipher.reprompt,
-    Key: cipher.key,
-    PasswordHistory: cipher.passwordHistory ? JSON.parse(cipher.passwordHistory) : null,
-    Attachments: null,
-    CreationDate: cipher.createdAt.toISOString(),
-    RevisionDate: cipher.updatedAt.toISOString(),
-    DeletedDate: cipher.deletedAt?.toISOString() || null,
-    Object: "cipher",
-  };
+  return jsonResponse(
+    serializeCipher(created!, { folderId: body.FolderId ?? null }),
+    200
+  );
 }

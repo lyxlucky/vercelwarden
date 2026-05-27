@@ -1,53 +1,88 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { users, devices } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
-import { generateTokenPair, buildProfile, newUuid, verifyRefreshToken } from "@/lib/auth";
-import { tokenResponse, errorResponse, unauthorized } from "@/lib/responses";
+import { eq } from "drizzle-orm";
+import {
+  generateTokenPair,
+  buildProfile,
+  newUuid,
+  verifyRefreshToken,
+} from "@/lib/auth";
+import { verifyPassword } from "@/lib/password";
+import {
+  tokenResponse,
+  errorResponse,
+  unauthorized,
+} from "@/lib/responses";
 
 // POST /identity/connect/token
-// Handles: password login, refresh_token, client_credentials (API key)
+// Handles: password grant, refresh_token grant, client_credentials (API key)
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
-  const grantType = formData.get("grant_type") as string;
+  const grantType = formData.get("grant_type") as string | null;
 
-  if (grantType === "refresh_token") {
-    return handleRefreshToken(formData);
-  } else if (grantType === "password") {
-    return handlePasswordLogin(formData);
-  } else if (grantType === "client_credentials") {
-    return handleApiKeyLogin(formData);
+  switch (grantType) {
+    case "password":
+      return handlePasswordLogin(formData);
+    case "refresh_token":
+      return handleRefreshToken(formData);
+    case "client_credentials":
+      return handleApiKeyLogin();
+    default:
+      return errorResponse("Unsupported grant_type");
   }
-
-  return errorResponse("Unsupported grant_type");
 }
 
 // ─── Password Login ───────────────────────────────────────
 async function handlePasswordLogin(formData: FormData) {
-  const email = (formData.get("username") as string)?.toLowerCase().trim();
-  const password = formData.get("password") as string;
-  const deviceIdentifier = formData.get("deviceIdentifier") as string;
-  const deviceName = formData.get("deviceName") as string;
-  const deviceType = formData.get("deviceType") as string;
+  const email = (formData.get("username") as string | null)?.toLowerCase().trim();
+  const password = formData.get("password") as string | null;
+  const deviceIdentifier = formData.get("deviceIdentifier") as string | null;
+  const deviceName = (formData.get("deviceName") as string | null) || "Unknown Device";
+  const deviceTypeRaw = formData.get("deviceType") as string | null;
 
   if (!email || !password || !deviceIdentifier) {
     return errorResponse("Missing required fields");
   }
 
-  // Find user by email
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user || !user.enabled) {
-    return unauthorized("Invalid email or password.");
+    return unauthorized("Username or password is incorrect. Try again.");
   }
 
-  // Verify password hash (client sends hash, we compare with stored hash)
-  if (password !== Buffer.from(user.passwordHash as Uint8Array).toString()) {
-    return unauthorized("Invalid email or password.");
+  const ok = verifyPassword(
+    password,
+    user.passwordHash as Uint8Array,
+    user.salt as Uint8Array,
+    user.passwordIterations
+  );
+  if (!ok) {
+    return unauthorized("Username or password is incorrect. Try again.");
   }
 
-  // Find or create device
-  const deviceTypeNum = parseInt(deviceType) || 0;
+  // 2FA gate (TOTP only for now)
+  if (user.totpSecret) {
+    const twoFactorToken = formData.get("twoFactorToken") as string | null;
+    if (!twoFactorToken) {
+      // Bitwarden clients recognize this exact response and prompt for code.
+      return new Response(
+        JSON.stringify({
+          error: "invalid_grant",
+          error_description: "Two factor required.",
+          TwoFactorProviders: [0],
+          TwoFactorProviders2: { "0": null },
+          MasterPasswordPolicy: null,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const { verifyTotp } = await import("@/lib/totp");
+    if (!verifyTotp(user.totpSecret, twoFactorToken)) {
+      return unauthorized("Two-factor code is invalid");
+    }
+  }
+
+  const deviceTypeNum = deviceTypeRaw ? parseInt(deviceTypeRaw) || 0 : 0;
   let device: typeof devices.$inferSelect;
 
   const [existingDevice] = await db
@@ -56,23 +91,23 @@ async function handlePasswordLogin(formData: FormData) {
     .where(eq(devices.identifier, deviceIdentifier))
     .limit(1);
 
+  const now = new Date();
   if (existingDevice) {
-    const now = new Date();
     await db
       .update(devices)
-      .set({ updatedAt: now, name: deviceName || "Unknown Device" })
+      .set({ updatedAt: now, name: deviceName })
       .where(eq(devices.uuid, existingDevice.uuid));
-    device = { ...existingDevice, updatedAt: now, name: deviceName || "Unknown Device" };
+    device = { ...existingDevice, updatedAt: now, name: deviceName };
   } else {
     device = {
       uuid: newUuid(),
       userUuid: user.uuid,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      name: deviceName || "Unknown Device",
+      createdAt: now,
+      updatedAt: now,
+      name: deviceName,
       type: deviceTypeNum,
       identifier: deviceIdentifier,
-      refreshToken: "", // will be set below
+      refreshToken: "",
       pushToken: null,
       accessTokenExpiration: null,
     };
@@ -81,92 +116,62 @@ async function handlePasswordLogin(formData: FormData) {
 
   const { accessToken, refreshToken } = await generateTokenPair(user, device);
 
-  // Store refresh token in device record for rotation validation
   await db
     .update(devices)
     .set({ refreshToken, updatedAt: new Date() })
     .where(eq(devices.uuid, device.uuid));
-
-  const profile = buildProfile(user);
 
   return tokenResponse({
     accessToken,
     refreshToken,
     expiresIn: 3600,
     tokenType: "Bearer",
-    user: profile,
-    privateKey: user.privateKey,
-    key: user.akey,
+    user: buildProfile(user),
     masterPasswordPolicy: null,
   });
 }
 
 // ─── Refresh Token ────────────────────────────────────────
 async function handleRefreshToken(formData: FormData) {
-  const refreshTokenValue = formData.get("refresh_token") as string;
-  const deviceIdentifier = formData.get("deviceIdentifier") as string;
+  const refreshTokenValue = formData.get("refresh_token") as string | null;
+  if (!refreshTokenValue) return errorResponse("refresh_token is required");
 
-  if (!refreshTokenValue) {
-    return errorResponse("refresh_token is required");
-  }
-
-  // Verify the refresh token JWT and extract claims
   const claims = await verifyRefreshToken(refreshTokenValue);
-  if (!claims) {
-    return unauthorized("Invalid or expired refresh token.");
-  }
+  if (!claims) return unauthorized("Invalid or expired refresh token.");
 
-  const userUuid = claims.sub;
-  const deviceUuid = claims.device;
-
-  // Find the device
   const [device] = await db
     .select()
     .from(devices)
-    .where(eq(devices.uuid, deviceUuid))
+    .where(eq(devices.uuid, claims.device))
     .limit(1);
-
-  if (!device || device.userUuid !== userUuid) {
+  if (!device || device.userUuid !== claims.sub) {
     return unauthorized("Invalid refresh token.");
   }
-
-  // Verify the refresh token matches what we stored (prevents token reuse after rotation)
   if (device.refreshToken !== refreshTokenValue) {
-    // Token mismatch — possible token reuse attack, invalidate all tokens for this device
     return unauthorized("Refresh token has been revoked.");
   }
 
-  // Find the user
-  const [user] = await db.select().from(users).where(eq(users.uuid, userUuid)).limit(1);
-  if (!user || !user.enabled) {
-    return unauthorized("User not found or disabled.");
-  }
+  const [user] = await db.select().from(users).where(eq(users.uuid, claims.sub)).limit(1);
+  if (!user || !user.enabled) return unauthorized("User not found or disabled.");
 
-  // Generate new token pair (rotation)
   const { accessToken, refreshToken: newRefreshToken } = await generateTokenPair(user, device);
 
-  // Store new refresh token (rotation — old token is now invalid)
   await db
     .update(devices)
     .set({ refreshToken: newRefreshToken, updatedAt: new Date() })
     .where(eq(devices.uuid, device.uuid));
-
-  const profile = buildProfile(user);
 
   return tokenResponse({
     accessToken,
     refreshToken: newRefreshToken,
     expiresIn: 3600,
     tokenType: "Bearer",
-    user: profile,
-    privateKey: user.privateKey,
-    key: user.akey,
+    user: buildProfile(user),
     masterPasswordPolicy: null,
   });
 }
 
-// ─── API Key Login ────────────────────────────────────────
-async function handleApiKeyLogin(formData: FormData) {
-  // TODO: Implement API key login
+// ─── API Key Login (not implemented) ──────────────────────
+async function handleApiKeyLogin() {
   return errorResponse("API key login not yet implemented", 501);
 }

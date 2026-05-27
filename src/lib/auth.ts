@@ -4,7 +4,19 @@ import { users, devices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "change-me");
+// ─── JWT_SECRET (lazy, hard-fail) ─────────────────────────
+let _jwtSecret: Uint8Array | null = null;
+function getJwtSecret(): Uint8Array {
+  if (_jwtSecret) return _jwtSecret;
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error(
+      "JWT_SECRET must be set and at least 32 characters (e.g. `openssl rand -hex 32`)"
+    );
+  }
+  _jwtSecret = new TextEncoder().encode(s);
+  return _jwtSecret;
+}
 
 // ─── Types ────────────────────────────────────────────────
 export interface AuthUser {
@@ -16,7 +28,7 @@ export interface AuthUser {
   masterPasswordHint: string | null;
   culture: string;
   twoFactorEnabled: boolean;
-  key: string;            // encrypted symmetric key
+  key: string;
   privateKey: string | null;
   securityStamp: string;
   forcePasswordReset: boolean;
@@ -29,11 +41,14 @@ export interface AuthResult {
   device: typeof devices.$inferSelect;
 }
 
-// ─── Token Generation (matches Vaultwarden identity response) ──
-export async function generateTokenPair(user: typeof users.$inferSelect, device: typeof devices.$inferSelect) {
+// ─── Token Generation ─────────────────────────────────────
+export async function generateTokenPair(
+  user: typeof users.$inferSelect,
+  device: typeof devices.$inferSelect
+) {
+  const secret = getJwtSecret();
   const now = Math.floor(Date.now() / 1000);
 
-  // Access token (short-lived, 1 hour)
   const accessToken = await new SignJWT({
     sub: user.uuid,
     device: device.uuid,
@@ -41,6 +56,7 @@ export async function generateTokenPair(user: typeof users.$inferSelect, device:
     name: user.name,
     premium: true,
     email_verified: !!user.verifiedAt,
+    sstamp: user.securityStamp,
     iss: "Bitwarden",
     aud: "Bitwarden",
   })
@@ -49,9 +65,8 @@ export async function generateTokenPair(user: typeof users.$inferSelect, device:
     .setExpirationTime("1h")
     .setIssuer("Bitwarden")
     .setAudience("Bitwarden")
-    .sign(JWT_SECRET);
+    .sign(secret);
 
-  // Refresh token
   const refreshToken = await new SignJWT({
     sub: user.uuid,
     device: device.uuid,
@@ -64,7 +79,7 @@ export async function generateTokenPair(user: typeof users.$inferSelect, device:
     .setExpirationTime("30d")
     .setIssuer("Bitwarden")
     .setAudience("Bitwarden")
-    .sign(JWT_SECRET);
+    .sign(secret);
 
   return { accessToken, refreshToken };
 }
@@ -75,16 +90,20 @@ export async function verifyAuth(authHeader: string | null): Promise<AuthResult 
 
   const token = authHeader.slice(7);
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: "Bitwarden",
       audience: "Bitwarden",
     });
 
     const userUuid = payload.sub as string;
     const deviceUuid = payload.device as string;
+    const tokenSstamp = payload.sstamp as string | undefined;
 
     const [user] = await db.select().from(users).where(eq(users.uuid, userUuid)).limit(1);
     if (!user || !user.enabled) return null;
+
+    // Security stamp rotation invalidates outstanding access tokens.
+    if (tokenSstamp && tokenSstamp !== user.securityStamp) return null;
 
     const [device] = await db.select().from(devices).where(eq(devices.uuid, deviceUuid)).limit(1);
     if (!device || device.userUuid !== user.uuid) return null;
@@ -120,20 +139,17 @@ export function newUuid(): string {
   return uuidv4();
 }
 
-// ─── Verify Refresh Token (returns claims or null) ────────
-export async function verifyRefreshToken(token: string): Promise<{ sub: string; device: string } | null> {
+// ─── Verify Refresh Token ─────────────────────────────────
+export async function verifyRefreshToken(
+  token: string
+): Promise<{ sub: string; device: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: "Bitwarden",
       audience: "Bitwarden",
     });
-
     if (payload.grant_type !== "refresh_token") return null;
-
-    return {
-      sub: payload.sub as string,
-      device: payload.device as string,
-    };
+    return { sub: payload.sub as string, device: payload.device as string };
   } catch {
     return null;
   }

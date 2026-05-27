@@ -1,111 +1,101 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { ciphers, folders, folderCiphers, attachments } from "@/db/schema";
+import { ciphers, folders, folderCiphers, attachments, sends } from "@/db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import { verifyAuth, buildProfile } from "@/lib/auth";
 import { jsonResponse, unauthorized } from "@/lib/responses";
+import { serializeCipher } from "@/lib/cipher";
+import { serializeSend } from "@/lib/send";
 
 // GET /api/sync
-// Returns all vault data for the authenticated user
-// Matches Vaultwarden's sync response format exactly
+// Returns all vault data for the authenticated user.
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request.headers.get("authorization"));
   if (!auth) return unauthorized();
 
   const { user } = auth;
+  const origin = request.nextUrl.origin;
+  const excludeDomains = request.nextUrl.searchParams.get("excludeDomains") === "true";
 
-  // Fetch user's ciphers (not deleted)
   const userCiphers = await db
     .select()
     .from(ciphers)
     .where(and(eq(ciphers.userUuid, user.uuid), isNull(ciphers.deletedAt)));
 
-  // Fetch user's folders
   const userFolders = await db
     .select()
     .from(folders)
     .where(eq(folders.userUuid, user.uuid));
 
-  // Fetch folder-cipher relationships for all user ciphers
   const cipherUuids = userCiphers.map((c) => c.uuid);
-  let folderCipherLinks: typeof folderCiphers.$inferSelect[] = [];
-  if (cipherUuids.length > 0) {
-    folderCipherLinks = await db
-      .select()
-      .from(folderCiphers)
-      .where(inArray(folderCiphers.cipherUuid, cipherUuids));
+  const folderLinks = cipherUuids.length
+    ? await db
+        .select()
+        .from(folderCiphers)
+        .where(inArray(folderCiphers.cipherUuid, cipherUuids))
+    : [];
+  const folderByCipher = new Map(folderLinks.map((l) => [l.cipherUuid, l.folderUuid]));
+
+  const userAttachments = cipherUuids.length
+    ? await db
+        .select()
+        .from(attachments)
+        .where(inArray(attachments.cipherUuid, cipherUuids))
+    : [];
+  const attachmentsByCipher = new Map<string, typeof userAttachments>();
+  for (const a of userAttachments) {
+    const list = attachmentsByCipher.get(a.cipherUuid) ?? [];
+    list.push(a);
+    attachmentsByCipher.set(a.cipherUuid, list);
   }
 
-  // Fetch attachments for all user ciphers
-  let userAttachments: typeof attachments.$inferSelect[] = [];
-  if (cipherUuids.length > 0) {
-    userAttachments = await db
-      .select()
-      .from(attachments)
-      .where(inArray(attachments.cipherUuid, cipherUuids));
-  }
+  const userSends = await db.select().from(sends).where(eq(sends.userUuid, user.uuid));
 
-  // Build response matching Vaultwarden format
   const profile = buildProfile(user);
 
   return jsonResponse({
-    profile: {
+    Profile: {
       ...profile,
-      organizations: [],
-      providers: [],
-      providerOrganizations: [],
+      Organizations: [],
+      Providers: [],
+      ProviderOrganizations: [],
+      Object: "profile",
     },
-    folders: userFolders.map((f) => ({
+    Folders: userFolders.map((f) => ({
       Id: f.uuid,
       Name: f.name,
       RevisionDate: f.updatedAt.toISOString(),
       Object: "folder",
     })),
-    collections: [],
-    ciphers: userCiphers.map((c) => {
-      const folderLink = folderCipherLinks.find((fc) => fc.cipherUuid === c.uuid);
-      const cipherAttachments = userAttachments
-        .filter((a) => a.cipherUuid === c.uuid)
-        .map((a) => ({
-          Id: a.uuid,
-          FileName: a.fileName,
-          Size: a.fileSize,
-          SizeName: null,
-          Url: `/api/ciphers/${c.uuid}/attachment/${a.uuid}`,
-          Object: "attachment",
-        }));
-
-      return {
-        Id: c.uuid,
-        Type: c.type,
-        Name: c.name,
-        Notes: c.notes,
-        Fields: c.fields ? JSON.parse(c.fields) : null,
-        Login: c.type === 1 ? JSON.parse(c.data) : null,
-        SecureNote: c.type === 2 ? JSON.parse(c.data) : null,
-        Card: c.type === 3 ? JSON.parse(c.data) : null,
-        Identity: c.type === 4 ? JSON.parse(c.data) : null,
-        OrganizationId: c.organizationUuid,
-        FolderId: folderLink?.folderUuid || null,
-        Favorite: c.favorite,
-        Edit: c.edit,
-        Reprompt: c.reprompt,
-        Key: c.key,
-        PasswordHistory: c.passwordHistory ? JSON.parse(c.passwordHistory) : null,
-        Attachments: cipherAttachments.length > 0 ? cipherAttachments : null,
-        CreationDate: c.createdAt.toISOString(),
-        RevisionDate: c.updatedAt.toISOString(),
-        DeletedDate: c.deletedAt?.toISOString() || null,
-        Object: "cipher",
-      };
+    Collections: [],
+    Ciphers: userCiphers.map((c) => {
+      const cAtts = attachmentsByCipher.get(c.uuid);
+      const att = cAtts
+        ? cAtts.map((a) => ({
+            Id: a.uuid,
+            FileName: a.fileName,
+            Size: a.fileSize,
+            SizeName: null,
+            Url: `${origin}/api/ciphers/${c.uuid}/attachment/${a.uuid}`,
+            Key: a.key ?? null,
+            Object: "attachment" as const,
+          }))
+        : null;
+      return serializeCipher(c, {
+        folderId: folderByCipher.get(c.uuid) ?? null,
+        attachments: att,
+      });
     }),
-    domains: {
-      EquivalentDomains: JSON.parse(user.equivalentDomains),
-      GlobalEquivalentDomains: [],
-      Object: "domains",
-    },
-    policies: [],
-    sends: [],
+    Domains: excludeDomains
+      ? null
+      : {
+          EquivalentDomains: JSON.parse(user.equivalentDomains),
+          GlobalEquivalentDomains: [],
+          Object: "domains",
+        },
+    Policies: [],
+    Sends: userSends.map(serializeSend),
+    UnofficialServer: true,
     Object: "sync",
   });
 }
