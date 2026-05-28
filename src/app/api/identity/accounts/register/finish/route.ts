@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
     key: symmetricKey,
     privateKey: keys.encryptedPrivateKey,
     publicKey: keys.publicKey,
-    token: body.token ?? body.orgInviteToken,
     kdfType: body.kdf,
     kdfIterations: body.kdfIterations,
     kdfMemory: body.kdfMemory,
@@ -58,14 +57,8 @@ export async function POST(request: NextRequest) {
     switch (result.error.kind) {
       case "missing_fields":
         return errorResponse("Missing required fields");
-      case "invite_required":
-        return errorResponse("Invitation code is required", 400, {
-          token: ["Invitation code is required"],
-        });
-      case "invite_invalid":
-        return errorResponse("Invalid or expired invitation code", 400, {
-          token: ["Invalid or expired invitation code"],
-        });
+      case "registration_disabled":
+        return errorResponse("Registration is disabled", 403);
       case "email_taken":
         return errorResponse("Email is already registered", 400, {
           email: ["Email is already registered"],

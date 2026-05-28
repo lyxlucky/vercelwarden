@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { users, invitationCodes } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { errorResponse } from "@/lib/responses";
 import { signRegistrationToken } from "@/lib/registration-token";
 
@@ -22,19 +22,12 @@ export async function POST(request: NextRequest) {
   const name = body?.name || "";
   if (!email) return errorResponse("Email is required");
 
+  if (process.env.DISABLE_REGISTRATION === "true") {
+    return errorResponse("Registration is disabled", 403);
+  }
+
   const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (existing) return errorResponse("Email is already registered");
-
-  if (process.env.REQUIRE_INVITE_CODE === "true") {
-    const [invite] = await db
-      .select()
-      .from(invitationCodes)
-      .where(and(isNull(invitationCodes.usedAt)))
-      .limit(1);
-    if (!invite) {
-      return errorResponse("Registration disabled: no invitation codes available");
-    }
-  }
 
   const token = await signRegistrationToken({ email, name });
 

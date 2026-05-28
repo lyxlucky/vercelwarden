@@ -20,9 +20,7 @@ export async function GET(request: NextRequest) {
     },
     featureStates: {},
     settings: {
-      disableUserRegistration:
-        process.env.REQUIRE_INVITE_CODE !== "true" &&
-        process.env.DISABLE_REGISTRATION === "true",
+      disableUserRegistration: process.env.DISABLE_REGISTRATION === "true",
     },
     object: "config",
   });

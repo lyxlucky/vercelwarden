@@ -4,7 +4,7 @@
 
 部署在 Vercel 免费层上的自托管 Bitwarden 兼容密码管理器。
 
-**在线预览：** https://vercelwarden.vercel.app/web-vault/index.html#/login
+<a href="https://vercelwarden.vercel.app/web-vault/index.html#/login" target="_blank">在线预览</a>
 
 完全兼容：
 - Bitwarden 浏览器扩展（Chrome / Firefox / Safari / Edge）
@@ -19,8 +19,7 @@
 - 同时支持 Argon2id 与 PBKDF2 KDF；服务端对客户端提交的 hash 再做一次 PBKDF2 拉伸
 - TOTP 两步验证 + 恢复码
 - Bitwarden Send（文本 + 文件）
-- 邀请码注册
-- 管理员后台（用户/邀请码管理）
+- 管理员后台（用户管理：启用/停用/删除）
 - 网站图标代理
 - Vercel Blob 存储附件与文件 Send
 - 可选 HIBP 密码泄露检查
@@ -52,10 +51,9 @@ cp .env.example .env.local
 - `TURSO_AUTH_TOKEN` — 步骤 1 获得
 - `JWT_SECRET` — **必填，≥ 32 字符**（例如 `openssl rand -hex 32`）
 - `ADMIN_PASSWORD` — **必填，≥ 8 字符**
-- `REQUIRE_INVITE_CODE` — `true`（推荐）
 - `HIBP_API_KEY` — *可选*，启用密码泄露检查
 - `BLOB_READ_WRITE_TOKEN` — *可选*，附件和文件 Send 需要
-- `DISABLE_REGISTRATION` — *可选*，在 `/api/config` 中声明禁止注册
+- `DISABLE_REGISTRATION` — *可选*，设为 `true` 关闭公开注册（在 `/api/config` 中声明）
 
 ### 3. 推送数据库 schema
 
@@ -77,7 +75,6 @@ vercel env add TURSO_DATABASE_URL
 vercel env add TURSO_AUTH_TOKEN
 vercel env add JWT_SECRET
 vercel env add ADMIN_PASSWORD
-vercel env add REQUIRE_INVITE_CODE
 ```
 
 ### 5. 配置 Bitwarden 客户端
@@ -85,7 +82,7 @@ vercel env add REQUIRE_INVITE_CODE
 1. 打开 Bitwarden 浏览器扩展（或桌面端）
 2. 登录界面点击齿轮（设置）
 3. 选 "Self-hosted" → 服务器 URL 填 `https://your-project.vercel.app`
-4. 注册新账号（需要从管理后台获取的邀请码）
+4. 注册新账号（默认开放注册，若设置 `DISABLE_REGISTRATION=true` 则关闭）
 
 ## API 兼容性
 
@@ -147,12 +144,12 @@ vercel env add REQUIRE_INVITE_CODE
 ## 已知限制
 
 - **文件 Send 和附件**：Vercel Blob hobby 层单文件上限约 4.5 MB；Pro 层升到 5 GB。
-- **不支持 SMTP**：注册流程会调用 `/identity/accounts/register/send-verification-email`，但实际不发邮件 —— verification token 直接随响应返回。请配合邀请码模式 (`REQUIRE_INVITE_CODE=true`) 做真实门禁。
+- **不支持 SMTP**：注册流程会调用 `/identity/accounts/register/send-verification-email`，但实际不发邮件 —— verification token 直接随响应返回。如需真实门禁，可设置 `DISABLE_REGISTRATION=true` 关闭公开注册。
 - **不支持 WebSocket 实时通知**：Vercel serverless 无法承载 SignalR Hub。Bitwarden 客户端会自动降级为轮询 `/api/sync`（功能正常，只是会有延迟）。
 
 ## 升级说明（2026-05-27 Bitwarden 对标）
 
-如果你是从早期版本升级过来：`users.password_hash` 字段语义已变更，现在存的是服务端二次 PBKDF2 后的 hash，不再是客户端提交的原始 hash。**所有旧账号必须删除后重新邀请注册**（管理后台 → 用户 → 删除）。拉取代码后运行 `npx drizzle-kit push`。
+如果你是从早期版本升级过来：`users.password_hash` 字段语义已变更，现在存的是服务端二次 PBKDF2 后的 hash，不再是客户端提交的原始 hash。**所有旧账号必须删除后重新注册**（管理后台 → 用户 → 删除）。拉取代码后运行 `npx drizzle-kit push`。`invitation_codes` 表和 `REQUIRE_INVITE_CODE` 开关已移除；如有遗留可执行 `DROP TABLE IF EXISTS invitation_codes;`。
 
 ## 许可证
 

@@ -137,14 +137,3 @@ CREATE TABLE IF NOT EXISTS `sends` (
   `hide_email` integer DEFAULT false NOT NULL,
   FOREIGN KEY (`user_uuid`) REFERENCES `users`(`uuid`) ON DELETE cascade
 );
-
--- ============================================
--- Invitation Codes
--- ============================================
-CREATE TABLE IF NOT EXISTS `invitation_codes` (
-  `code` text PRIMARY KEY NOT NULL,
-  `created_at` integer NOT NULL,
-  `used_at` integer,
-  `used_by` text,
-  `created_by` text DEFAULT 'admin' NOT NULL
-);

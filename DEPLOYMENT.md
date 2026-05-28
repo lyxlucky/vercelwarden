@@ -112,9 +112,6 @@ vercel env add JWT_SECRET
 vercel env add ADMIN_PASSWORD
 # 粘贴: f7e8d9c0b1a2...
 
-vercel env add REQUIRE_INVITE_CODE
-# 输入: true
-
 # 生产环境部署
 vercel --prod
 ```
@@ -137,7 +134,6 @@ git push -u origin main
    - `TURSO_AUTH_TOKEN` = eyJhbGciOiJFZDI1NTE5...
    - `JWT_SECRET` = a1b2c3d4e5f6...
    - `ADMIN_PASSWORD` = f7e8d9c0b1a2...
-   - `REQUIRE_INVITE_CODE` = true
 
 4. 点击 Deploy
 
@@ -159,13 +155,12 @@ vercel --prod
 
 ---
 
-## 第六步: 创建第一个用户
+## 第六步: 注册账号
 
-1. 打开管理后台: `https://your-project.vercel.app/admin`
-2. 输入管理员密码 (第三步生成的 `ADMIN_PASSWORD`)
-3. 切换到 "Invitation Codes" 标签
-4. 点击 "Generate" 生成邀请码
-5. 记下邀请码 (如: `A1B2C3D4`)
+1. 默认开放注册（如需关闭，设置 `DISABLE_REGISTRATION=true`）。
+2. 在 Bitwarden 客户端选择 "Self-hosted" 并填入你的部署 URL。
+3. 点击 "Create Account" 注册第一个账号。
+4. 之后可在管理后台 `https://your-project.vercel.app/admin` 用 `ADMIN_PASSWORD` 登录管理用户（启用/停用/删除）。
 
 ---
 
@@ -179,8 +174,7 @@ vercel --prod
 4. Server URL 填: `https://your-project.vercel.app`
 5. 保存
 6. 点击 "Create Account" 注册
-7. 邮箱填你的邮箱，邀请码填第六步生成的码
-8. 设置主密码 (这个密码永远不会发送到服务器)
+7. 填写邮箱并设置主密码 (这个密码永远不会发送到服务器)
 
 ### 桌面端 (Windows/macOS/Linux)
 
@@ -211,7 +205,7 @@ vercel --prod
 | `TURSO_AUTH_TOKEN` | ✅ | Turso 认证 token |
 | `JWT_SECRET` | ✅ | JWT 签名密钥 (随机 hex) |
 | `ADMIN_PASSWORD` | ✅ | 管理后台密码 |
-| `REQUIRE_INVITE_CODE` | 可选 | `true` 要求邀请码注册 (推荐) |
+| `DISABLE_REGISTRATION` | 可选 | `true` 关闭公开注册 |
 | `BLOB_READ_WRITE_TOKEN` | 可选 | Vercel Blob token (附件功能) |
 
 ---
@@ -221,8 +215,8 @@ vercel --prod
 ### Q: 部署后访问报错 "TURSO_DATABASE_URL is not set"
 A: 检查 Vercel Dashboard → Settings → Environment Variables 是否配置正确。确保 Production 环境也设置了。
 
-### Q: 注册时提示 "Invitation code is required"
-A: 这是正常的。去 `/admin` 管理后台生成邀请码。
+### Q: 注册时提示 "Registration is disabled"
+A: 当前 `DISABLE_REGISTRATION` 被设为 `true`。如需开放注册，删除该环境变量或改为 `false` 后重新部署。
 
 ### Q: Bitwarden 客户端连接不上
 A: 检查:
@@ -315,7 +309,7 @@ vercelwarden/
 - 服务端只存储加密后的数据
 - JWT token 有过期时间 (1小时 access + 30天 refresh)
 - Refresh token rotation 防止 token 重用攻击
-- 邀请码制防止未授权注册
+- 可通过 `DISABLE_REGISTRATION=true` 关闭公开注册
 
 ---
 

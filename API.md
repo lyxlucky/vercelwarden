@@ -117,7 +117,7 @@ Content-Type: application/json
 
 ### POST /api/accounts/register
 
-注册新用户（需要邀请码）。
+注册新用户。
 
 ```
 POST /api/accounts/register
@@ -131,7 +131,6 @@ Content-Type: application/json
   "key": "encryptedSymmetricKey",
   "privateKey": "encryptedPrivateKey",
   "publicKey": "rsaPublicKey",
-  "token": "INVITECODE",
   "kdfType": 1,
   "kdfIterations": 3,
   "kdfMemory": 64,
@@ -142,9 +141,8 @@ Content-Type: application/json
 **响应:** 用户 profile 对象（同 prelogin 格式）
 
 **错误:**
-- 400: `Invitation code is required`
-- 400: `Invalid or expired invitation code`
 - 400: `Email is already registered`
+- 403: `Registration is disabled`
 
 ---
 
@@ -589,73 +587,6 @@ GET /api/icons/github.com/icon.png
 
 所有管理接口需要 Basic Auth: `Authorization: Basic base64(admin:password)`
 
-### GET /api/admin/invitations
-
-获取所有邀请码。
-
-```
-GET /api/admin/invitations
-Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
-```
-
-**响应:**
-```json
-{
-  "data": [
-    {
-      "code": "A1B2C3D4",
-      "createdAt": "2026-01-01T00:00:00.000Z",
-      "usedAt": null,
-      "usedBy": null,
-      "createdBy": "admin"
-    }
-  ],
-  "object": "list"
-}
-```
-
----
-
-### POST /api/admin/invitations
-
-生成邀请码。
-
-```
-POST /api/admin/invitations
-Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
-Content-Type: application/json
-
-{
-  "code": "CUSTOMCODE"  // 可选，不填自动生成
-}
-```
-
-**响应:**
-```json
-{
-  "code": "A1B2C3D4",
-  "object": "invitation"
-}
-```
-
----
-
-### DELETE /api/admin/invitations
-
-删除邀请码。
-
-```
-DELETE /api/admin/invitations
-Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
-Content-Type: application/json
-
-{
-  "code": "A1B2C3D4"
-}
-```
-
----
-
 ### GET /api/admin/users
 
 获取所有注册用户。
@@ -681,6 +612,39 @@ Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
     }
   ],
   "object": "list"
+}
+```
+
+---
+
+### PATCH /api/admin/users
+
+启用/停用账号。
+
+```
+PATCH /api/admin/users
+Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
+Content-Type: application/json
+
+{
+  "uuid": "user-uuid",
+  "enabled": false
+}
+```
+
+---
+
+### DELETE /api/admin/users
+
+永久删除账号及其全部 vault 数据。
+
+```
+DELETE /api/admin/users
+Authorization: Basic base64(admin:<ADMIN_PASSWORD>)
+Content-Type: application/json
+
+{
+  "uuid": "user-uuid"
 }
 ```
 

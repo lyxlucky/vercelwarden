@@ -4,7 +4,7 @@
 
 Self-hosted Bitwarden-compatible password manager running on Vercel's free tier.
 
-**Live demo:** https://vercelwarden.vercel.app/web-vault/index.html#/login
+<a href="https://vercelwarden.vercel.app/web-vault/index.html#/login" target="_blank">Live demo</a>
 
 Fully compatible with:
 - Bitwarden Browser Extensions (Chrome, Firefox, Safari, Edge)
@@ -19,8 +19,7 @@ Fully compatible with:
 - Argon2id + PBKDF2 KDF support, server-side PBKDF2 stretching of submitted hashes
 - TOTP two-factor authentication with recovery code
 - Bitwarden Send (text + file)
-- Invitation-only registration
-- Admin dashboard for user/code management
+- Admin dashboard with user management (enable/disable/delete)
 - Favicon proxy for password entries
 - Vercel Blob storage for attachments and file Sends
 - HIBP breach checking (optional)
@@ -52,10 +51,9 @@ Fill in:
 - `TURSO_AUTH_TOKEN` — from step 1
 - `JWT_SECRET` — **required, ≥ 32 chars** (e.g. `openssl rand -hex 32`)
 - `ADMIN_PASSWORD` — **required, ≥ 8 chars**
-- `REQUIRE_INVITE_CODE` — `true` (recommended)
 - `HIBP_API_KEY` — *optional*, enables breach checking
 - `BLOB_READ_WRITE_TOKEN` — *optional*, needed for attachments and file Sends
-- `DISABLE_REGISTRATION` — *optional*, advertises registration-disabled in `/api/config`
+- `DISABLE_REGISTRATION` — *optional*, set to `true` to close public registration (advertised in `/api/config`)
 
 ### 3. Push Database Schema
 
@@ -78,7 +76,6 @@ vercel env add TURSO_DATABASE_URL
 vercel env add TURSO_AUTH_TOKEN
 vercel env add JWT_SECRET
 vercel env add ADMIN_PASSWORD
-vercel env add REQUIRE_INVITE_CODE
 ```
 
 ### 5. Configure Bitwarden Client
@@ -86,7 +83,7 @@ vercel env add REQUIRE_INVITE_CODE
 1. Open Bitwarden browser extension (or desktop app)
 2. Click the gear icon (Settings) on the login screen
 3. Set "Self-hosted" → Server URL: `https://your-project.vercel.app`
-4. Register a new account (you'll need an invitation code from the admin panel)
+4. Register a new account (registration is open unless you set `DISABLE_REGISTRATION=true`)
 
 ## API Compatibility
 
@@ -148,12 +145,12 @@ vercel env add REQUIRE_INVITE_CODE
 ## Known Limits
 
 - **File Sends and attachments**: Vercel Blob hobby tier caps individual uploads at ~4.5 MB. Pro tier raises this to 5 GB.
-- **No SMTP**: registration uses `/identity/accounts/register/send-verification-email`, but no email is actually sent — the verification token is returned in-band. Combine with invite-code mode (`REQUIRE_INVITE_CODE=true`) for the real gate.
+- **No SMTP**: registration uses `/identity/accounts/register/send-verification-email`, but no email is actually sent — the verification token is returned in-band. If you need a real signup gate, set `DISABLE_REGISTRATION=true` and create accounts on a trusted host first.
 - **No WebSocket notifications**: Vercel serverless cannot host the SignalR hub. Bitwarden clients fall back to polling `/api/sync` (works fine, just delayed).
 
 ## Upgrade Notes (2026-05-27 Bitwarden parity pass)
 
-If you are upgrading from an earlier checkout, the password field semantics changed: `users.password_hash` is now the server's second-round PBKDF2 hash, not the client-submitted hash. **All previously registered accounts must be deleted and re-invited** (admin panel → users → delete). Run `npx drizzle-kit push` after pulling.
+If you are upgrading from an earlier checkout, the password field semantics changed: `users.password_hash` is now the server's second-round PBKDF2 hash, not the client-submitted hash. **All previously registered accounts must be deleted and re-created** (admin panel → users → delete). Run `npx drizzle-kit push` after pulling. The `invitation_codes` table and `REQUIRE_INVITE_CODE` flag have been removed — drop the table with `DROP TABLE IF EXISTS invitation_codes;` if upgrading.
 
 ## License
 

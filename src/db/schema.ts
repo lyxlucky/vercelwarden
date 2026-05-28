@@ -136,15 +136,6 @@ export const sends = sqliteTable("sends", {
   hideEmail: integer("hide_email", { mode: "boolean" }).notNull().default(false),
 });
 
-// ─── Invitation Codes ─────────────────────────────────────
-export const invitationCodes = sqliteTable("invitation_codes", {
-  code: text("code").primaryKey(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  usedAt: integer("used_at", { mode: "timestamp" }),
-  usedBy: text("used_by"),
-  createdBy: text("created_by").notNull().default("admin"),
-});
-
 // ─── Relations ────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
   devices: many(devices),

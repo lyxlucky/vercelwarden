@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { users, invitationCodes } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { newUuid } from "@/lib/auth";
 import { pickClientKdfFromBody } from "@/lib/kdf";
 import {
@@ -17,7 +17,6 @@ export interface RegisterInput {
   key: string;
   privateKey?: string | null;
   publicKey?: string | null;
-  token?: string;
   kdfType?: number;
   kdf?: number;
   kdfIterations?: number;
@@ -27,8 +26,7 @@ export interface RegisterInput {
 
 export type RegisterError =
   | { kind: "missing_fields" }
-  | { kind: "invite_required" }
-  | { kind: "invite_invalid" }
+  | { kind: "registration_disabled" }
   | { kind: "email_taken" };
 
 export type RegisterResult =
@@ -41,22 +39,8 @@ export async function createUser(input: RegisterInput): Promise<RegisterResult> 
     return { ok: false, error: { kind: "missing_fields" } };
   }
 
-  const requireInvite = process.env.REQUIRE_INVITE_CODE === "true";
-  if (requireInvite) {
-    if (!input.token) return { ok: false, error: { kind: "invite_required" } };
-    const [invite] = await db
-      .select()
-      .from(invitationCodes)
-      .where(
-        and(eq(invitationCodes.code, input.token), isNull(invitationCodes.usedAt))
-      )
-      .limit(1);
-    if (!invite) return { ok: false, error: { kind: "invite_invalid" } };
-
-    await db
-      .update(invitationCodes)
-      .set({ usedAt: new Date(), usedBy: email })
-      .where(eq(invitationCodes.code, input.token));
+  if (process.env.DISABLE_REGISTRATION === "true") {
+    return { ok: false, error: { kind: "registration_disabled" } };
   }
 
   const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
