@@ -1,0 +1,12 @@
+{
+  "apiUri": "/api",
+  "identityUri": "/identity",
+  "notificationsUri": "/notifications",
+  "iconsUri": "/icons",
+  "eventsUri": "/events",
+  "enterpriseSearchUri": null,
+  "billingRegion": null,
+  "allowedOutdatedDomains": [],
+  "stripeKey": null,
+  "braintreeKey": null
+}

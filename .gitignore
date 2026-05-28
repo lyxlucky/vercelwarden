@@ -40,9 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# web vault (downloaded separately via scripts/setup-web-vault.sh)
-/public/web-vault/
-
 # drizzle
 /drizzle/
 
