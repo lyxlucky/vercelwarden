@@ -1,361 +1,165 @@
 "use client";
 
 import {
+  cloneElement,
   createContext,
   forwardRef,
-  useCallback,
+  isValidElement,
   useContext,
-  useEffect,
   useId,
-  useMemo,
-  useRef,
   useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type ReactElement,
   type ReactNode,
 } from "react";
-import { X, type LucideIcon } from "lucide-react";
+import CloseOutlined from "@mui/icons-material/CloseOutlined";
+import {
+  Button as MuiButton,
+  Dialog as MuiDialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormControl,
+  FormHelperText,
+  FormLabel,
+  IconButton as MuiIconButton,
+  Menu as MuiMenu,
+  MenuItem as MuiMenuItem,
+  OutlinedInput,
+  Tab,
+  Tabs as MuiTabs,
+  Tooltip as MuiTooltip,
+} from "@mui/material";
+import type { LucideIcon } from "lucide-react";
+export { ToastProvider, useToast, type ToastMessage } from "@/components/ui/ToastProvider";
 
-function classes(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
-}
-
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "color"> {
   variant?: "primary" | "secondary" | "danger" | "ghost";
   size?: "sm" | "md";
   icon?: LucideIcon;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = "secondary", size = "md", icon: Icon, children, type = "button", ...props },
-  ref
+  { variant = "secondary", size = "md", icon: Icon, children, type = "button", ...props }, ref
 ) {
   return (
-    <button
+    <MuiButton
       ref={ref}
       type={type}
-      className={classes("vw-button", `vw-button--${variant}`, `vw-button--${size}`, className)}
+      variant={variant === "primary" || variant === "danger" ? "contained" : variant === "ghost" ? "text" : "outlined"}
+      color={variant === "danger" ? "error" : "primary"}
+      size={size === "sm" ? "small" : "medium"}
+      startIcon={Icon ? <Icon size={16} aria-hidden="true" /> : undefined}
       {...props}
     >
-      {Icon ? <Icon size={16} strokeWidth={1.8} aria-hidden="true" /> : null}
       {children}
-    </button>
+    </MuiButton>
   );
 });
 
-export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "color"> {
   label: string;
   icon: LucideIcon;
   size?: "sm" | "md";
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, icon: Icon, className, size = "md", type = "button", ...props },
-  ref
+  { label, icon: Icon, size = "md", type = "button", ...props }, ref
 ) {
   return (
-    <button
-      ref={ref}
-      type={type}
-      className={classes("vw-icon-button", `vw-icon-button--${size}`, className)}
-      aria-label={label}
-      title={label}
-      {...props}
-    >
-      <Icon size={size === "sm" ? 16 : 18} strokeWidth={1.8} aria-hidden="true" />
-    </button>
+    <MuiTooltip title={label}>
+      <span>
+        <MuiIconButton ref={ref} type={type} aria-label={label} size={size === "sm" ? "small" : "medium"} {...props}>
+          <Icon size={size === "sm" ? 16 : 18} aria-hidden="true" />
+        </MuiIconButton>
+      </span>
+    </MuiTooltip>
   );
 });
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  invalid?: boolean;
-}
-
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, invalid, ...props },
-  ref
-) {
-  return (
-    <input
-      ref={ref}
-      className={classes("vw-input", className)}
-      aria-invalid={invalid || undefined}
-      {...props}
-    />
-  );
+export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "color"> { invalid?: boolean }
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ invalid, ...props }, ref) {
+  return <OutlinedInput inputRef={ref} error={invalid} size="small" fullWidth {...props} />;
 });
 
-export function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: ReactNode;
-}) {
+export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
+  const id = useId();
+  const helperId = `${id}-helper`;
+  const control = isValidElement(children)
+    ? cloneElement(children as ReactElement<{ id?: string; "aria-describedby"?: string }>, { id, "aria-describedby": hint || error ? helperId : undefined })
+    : children;
   return (
-    <label className="vw-field">
-      <span className="vw-field__label">{label}</span>
-      {children}
-      {error ? <span className="vw-field__error">{error}</span> : hint ? <span className="vw-field__hint">{hint}</span> : null}
-    </label>
+    <FormControl error={Boolean(error)}>
+      <FormLabel htmlFor={id} sx={{ mb: 0.75 }}>{label}</FormLabel>
+      {control}
+      {error || hint ? <FormHelperText id={helperId}>{error ?? hint}</FormHelperText> : null}
+    </FormControl>
   );
 }
 
-interface MenuContextValue {
-  open: boolean;
-  setOpen(open: boolean): void;
-  contentId: string;
-}
-
+interface MenuContextValue { anchor: HTMLElement | null; setAnchor(anchor: HTMLElement | null): void; contentId: string }
 const MenuContext = createContext<MenuContextValue | null>(null);
-
-function useMenuContext() {
-  const value = useContext(MenuContext);
-  if (!value) throw new Error("Menu components must be rendered inside Menu.Root.");
-  return value;
+function useMenuContext() { const value = useContext(MenuContext); if (!value) throw new Error("Menu components must be inside Menu.Root."); return value; }
+function MenuRoot({ children }: { children: ReactNode; align?: "start" | "end" }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return <MenuContext.Provider value={{ anchor, setAnchor, contentId: useId() }}>{children}</MenuContext.Provider>;
 }
-
-function MenuRoot({ children, align = "end" }: { children: ReactNode; align?: "start" | "end" }) {
-  const [open, setOpen] = useState(false);
-  const contentId = useId();
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <MenuContext.Provider value={{ open, setOpen, contentId }}>
-      <div ref={ref} className="vw-menu" data-align={align}>{children}</div>
-    </MenuContext.Provider>
-  );
+function MenuTrigger({ children, onClick, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const menu = useMenuContext();
+  return <MuiButton variant="text" aria-haspopup="menu" aria-expanded={Boolean(menu.anchor)} onClick={(event) => { onClick?.(event); menu.setAnchor(event.currentTarget); }} disabled={props.disabled} className={props.className}>{children}</MuiButton>;
 }
-
-function MenuTrigger({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { open, setOpen, contentId } = useMenuContext();
-  return (
-    <button
-      type="button"
-      className="vw-menu__trigger"
-      aria-haspopup="menu"
-      aria-expanded={open}
-      aria-controls={contentId}
-      onClick={() => setOpen(!open)}
-      {...props}
-    >
-      {children}
-    </button>
-  );
+function MenuContent({ children, className }: HTMLAttributes<HTMLDivElement>) {
+  const menu = useMenuContext();
+  return <MuiMenu id={menu.contentId} anchorEl={menu.anchor} open={Boolean(menu.anchor)} onClose={() => menu.setAnchor(null)} className={className}>{children}</MuiMenu>;
 }
-
-function MenuContent({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  const { open, contentId } = useMenuContext();
-  if (!open) return null;
-  return <div id={contentId} role="menu" className={classes("vw-menu__content", className)} {...props}>{children}</div>;
+function MenuItem({ children, onClick, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const menu = useMenuContext();
+  return <MuiMenuItem onClick={(event) => { onClick?.(event as unknown as React.MouseEvent<HTMLButtonElement>); if (!event.defaultPrevented) menu.setAnchor(null); }} disabled={props.disabled} className={props.className}>{children}</MuiMenuItem>;
 }
-
-function MenuItem({ children, onClick, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { setOpen } = useMenuContext();
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className={classes("vw-menu__item", className)}
-      onClick={(event) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) setOpen(false);
-      }}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
 export const Menu = { Root: MenuRoot, Trigger: MenuTrigger, Content: MenuContent, Item: MenuItem };
 
-interface TabsContextValue {
-  value: string;
-  setValue(value: string): void;
-  id: string;
-}
-
+interface TabsContextValue { value: string; setValue(value: string): void; id: string }
 const TabsContext = createContext<TabsContextValue | null>(null);
-
-function useTabsContext() {
-  const value = useContext(TabsContext);
-  if (!value) throw new Error("Tabs components must be rendered inside Tabs.Root.");
-  return value;
-}
-
-function TabsRoot({ value, defaultValue, onValueChange, children }: {
-  value?: string;
-  defaultValue: string;
-  onValueChange?(value: string): void;
-  children: ReactNode;
-}) {
+function useTabsContext() { const value = useContext(TabsContext); if (!value) throw new Error("Tabs components must be inside Tabs.Root."); return value; }
+function TabsRoot({ value, defaultValue, onValueChange, children }: { value?: string; defaultValue: string; onValueChange?(value: string): void; children: ReactNode }) {
   const [internal, setInternal] = useState(defaultValue);
-  const id = useId();
   const selected = value ?? internal;
-  const setValue = (next: string) => {
-    if (value === undefined) setInternal(next);
-    onValueChange?.(next);
-  };
-  return <TabsContext.Provider value={{ value: selected, setValue, id }}>{children}</TabsContext.Provider>;
+  return <TabsContext.Provider value={{ value: selected, setValue(next) { if (value === undefined) setInternal(next); onValueChange?.(next); }, id: useId() }}>{children}</TabsContext.Provider>;
 }
-
 function TabsList({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div role="tablist" className={classes("vw-tabs", className)} {...props}>{children}</div>;
+  const tabs = useTabsContext();
+  return <MuiTabs value={tabs.value} onChange={(_, value: string) => tabs.setValue(value)} className={className} aria-label={props["aria-label"]}>{children}</MuiTabs>;
 }
-
 function TabsTrigger({ value, children }: { value: string; children: ReactNode }) {
   const tabs = useTabsContext();
-  const selected = tabs.value === value;
-  return (
-    <button
-      type="button"
-      role="tab"
-      id={`${tabs.id}-${value}-tab`}
-      aria-controls={`${tabs.id}-${value}-panel`}
-      aria-selected={selected}
-      tabIndex={selected ? 0 : -1}
-      className="vw-tabs__trigger"
-      onClick={() => tabs.setValue(value)}
-    >
-      {children}
-    </button>
-  );
+  return <Tab value={value} label={children} id={`${tabs.id}-${value}-tab`} aria-controls={`${tabs.id}-${value}-panel`} />;
 }
-
 function TabsPanel({ value, children, className }: { value: string; children: ReactNode; className?: string }) {
   const tabs = useTabsContext();
   if (tabs.value !== value) return null;
   return <div role="tabpanel" id={`${tabs.id}-${value}-panel`} aria-labelledby={`${tabs.id}-${value}-tab`} className={className}>{children}</div>;
 }
-
 export const Tabs = { Root: TabsRoot, List: TabsList, Trigger: TabsTrigger, Panel: TabsPanel };
 
-export function Dialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-  footer,
-}: {
-  open: boolean;
-  onOpenChange(open: boolean): void;
-  title: string;
-  description?: string;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-  const descriptionId = useId();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
+export function Dialog({ open, onOpenChange, title, description, children, footer }: { open: boolean; onOpenChange(open: boolean): void; title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
   return (
-    <dialog
-      ref={ref}
-      className="vw-dialog"
-      aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
-      onClose={() => onOpenChange(false)}
-      onCancel={(event) => {
-        event.preventDefault();
-        onOpenChange(false);
-      }}
-    >
-      <header className="vw-dialog__header">
-        <div>
-          <h2 id={titleId}>{title}</h2>
-          {description ? <p id={descriptionId}>{description}</p> : null}
-        </div>
-        <IconButton icon={X} label="关闭" onClick={() => onOpenChange(false)} />
-      </header>
-      <div className="vw-dialog__body">{children}</div>
-      {footer ? <footer className="vw-dialog__footer">{footer}</footer> : null}
-    </dialog>
+    <MuiDialog open={open} onClose={() => onOpenChange(false)}>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2 }}>
+        {title}
+        <MuiIconButton aria-label="关闭" onClick={() => onOpenChange(false)}><CloseOutlined /></MuiIconButton>
+      </DialogTitle>
+      <DialogContent>
+        {description ? <DialogContentText sx={{ mb: 2 }}>{description}</DialogContentText> : null}
+        {children}
+      </DialogContent>
+      {footer ? <DialogActions>{footer}</DialogActions> : null}
+    </MuiDialog>
   );
 }
 
 export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
-  const id = useId();
-  return (
-    <span className="vw-tooltip" aria-describedby={id}>
-      {children}
-      <span id={id} role="tooltip" className="vw-tooltip__content">{label}</span>
-    </span>
-  );
+  return <MuiTooltip title={label}><span>{children}</span></MuiTooltip>;
 }
-
-export interface ToastMessage {
-  id: number;
-  title: string;
-  description?: string;
-  tone?: "info" | "success" | "warning" | "danger";
-}
-
-interface ToastContextValue {
-  push(toast: Omit<ToastMessage, "id">): void;
-  dismiss(id: number): void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
-let toastId = 0;
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const dismiss = useCallback((id: number) => setToasts((current) => current.filter((item) => item.id !== id)), []);
-  const push = useCallback((toast: Omit<ToastMessage, "id">) => {
-    const id = ++toastId;
-    setToasts((current) => [...current, { ...toast, id }]);
-    window.setTimeout(() => dismiss(id), 5000);
-  }, [dismiss]);
-  const value = useMemo(() => ({ push, dismiss }), [dismiss, push]);
-
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      <div className="vw-toasts" role="region" aria-label="通知" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className="vw-toast" data-tone={toast.tone ?? "info"}>
-            <div><strong>{toast.title}</strong>{toast.description ? <p>{toast.description}</p> : null}</div>
-            <IconButton icon={X} label="关闭通知" size="sm" onClick={() => dismiss(toast.id)} />
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
-}
-
-export function useToast() {
-  const value = useContext(ToastContext);
-  if (!value) throw new Error("useToast must be used inside ToastProvider.");
-  return value;
-}
-

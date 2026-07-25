@@ -1,30 +1,40 @@
 "use client";
 
-import Link from "next/link";
-
+import type { ElementType } from "react";
 import {
-  Archive,
-  Copy,
-  CreditCard,
-  FileKey,
-  FileText,
-  Folder,
-  FolderCog,
-  Heart,
-  IdCard,
-  KeyRound,
-  Landmark,
+  ArchiveOutlined,
+  ContentCopyOutlined,
+  CreditCardOutlined,
+  DeleteOutlineOutlined,
+  DescriptionOutlined,
+  DriveFileRenameOutlineOutlined,
+  FolderOutlined,
+  FolderSpecialOutlined,
+  FavoriteBorderOutlined,
+  BadgeOutlined,
+  KeyOutlined,
+  AccountBalanceOutlined,
+  ListAltOutlined,
+  NoteAltOutlined,
+  AutoAwesomeOutlined,
+  TimerOutlined,
+  HealthAndSafetyOutlined,
+  SendOutlined,
+  ImportExportOutlined,
+} from "@mui/icons-material";
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
   List,
-  NotebookTabs,
-  Trash2,
-  WandSparkles,
-  Timer,
-  ShieldAlert,
-  Send,
-  DatabaseBackup,
-} from "lucide-react";
-import { Button } from "@/components/primitives";
-import type { LucideIcon } from "lucide-react";
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { AppLink } from "@/components/theme/AppLink";
 import type { VaultFilter, VaultFolderView } from "@/features/vault/store";
 
 interface Counts {
@@ -37,15 +47,15 @@ interface Counts {
   folders: Record<string, number>;
 }
 
-const typeRows: Array<{ type: number; label: string; icon: LucideIcon }> = [
-  { type: 1, label: "登录", icon: KeyRound },
-  { type: 2, label: "安全笔记", icon: FileText },
-  { type: 3, label: "银行卡", icon: CreditCard },
-  { type: 4, label: "身份", icon: IdCard },
-  { type: 5, label: "SSH 密钥", icon: FileKey },
-  { type: 6, label: "银行账户", icon: Landmark },
-  { type: 7, label: "驾驶证", icon: NotebookTabs },
-  { type: 8, label: "护照", icon: IdCard },
+const typeRows: Array<{ type: number; label: string; icon: ElementType }> = [
+  { type: 1, label: "登录", icon: KeyOutlined },
+  { type: 2, label: "安全笔记", icon: DescriptionOutlined },
+  { type: 3, label: "银行卡", icon: CreditCardOutlined },
+  { type: 4, label: "身份", icon: BadgeOutlined },
+  { type: 5, label: "SSH 密钥", icon: DriveFileRenameOutlineOutlined },
+  { type: 6, label: "银行账户", icon: AccountBalanceOutlined },
+  { type: 7, label: "驾驶证", icon: NoteAltOutlined },
+  { type: 8, label: "护照", icon: BadgeOutlined },
 ];
 
 function isActive(current: VaultFilter, candidate: VaultFilter) {
@@ -55,104 +65,83 @@ function isActive(current: VaultFilter, candidate: VaultFilter) {
   return true;
 }
 
-function ViewButton({
-  icon: Icon,
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  icon: LucideIcon;
+function ViewButton({ icon: Icon, label, count, active, onClick }: {
+  icon: ElementType;
   label: string;
   count: number;
   active: boolean;
   onClick(): void;
 }) {
   return (
-    <button type="button" className="vault-sidebar__item" aria-current={active ? "page" : undefined} onClick={onClick}>
-      <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
-      <span>{label}</span>
-      <span className="vault-sidebar__count">{count}</span>
-    </button>
+    <ListItemButton selected={active} aria-current={active ? "page" : undefined} onClick={onClick} sx={{ borderRadius: 1, mx: 1 }}>
+      <ListItemIcon sx={{ minWidth: 36 }}><Icon fontSize="small" /></ListItemIcon>
+      <ListItemText primary={label} />
+      <Chip component="span" label={count} size="small" variant={active ? "filled" : "outlined"} />
+    </ListItemButton>
   );
 }
 
-export function VaultSidebar({
-  filter,
-  counts,
-  folders,
-  onFilterChange,
-  onManageFolders,
-}: {
+function ToolLink({ href, icon: Icon, children }: { href: string; icon: ElementType; children: string }) {
+  return (
+    <ListItemButton component={AppLink} href={href} sx={{ borderRadius: 1, mx: 1 }}>
+      <ListItemIcon sx={{ minWidth: 36 }}><Icon fontSize="small" /></ListItemIcon>
+      <ListItemText primary={children} />
+    </ListItemButton>
+  );
+}
+
+function GroupTitle({ children }: { children: string }) {
+  return <Typography component="h2" variant="overline" color="text.secondary" sx={{ px: 2, pt: 1.5, display: "block" }}>{children}</Typography>;
+}
+
+export function VaultSidebar({ filter, counts, folders, onFilterChange, onManageFolders }: {
   filter: VaultFilter;
   counts: Counts;
   folders: VaultFolderView[];
   onFilterChange(filter: VaultFilter): void;
   onManageFolders(): void;
 }) {
-  const viewRows: Array<{ filter: VaultFilter; label: string; count: number; icon: LucideIcon }> = [
-    { filter: { kind: "all" }, label: "所有项目", count: counts.all, icon: List },
-    { filter: { kind: "favorites" }, label: "收藏", count: counts.favorites, icon: Heart },
-    { filter: { kind: "archive" }, label: "归档", count: counts.archive, icon: Archive },
-    { filter: { kind: "trash" }, label: "回收站", count: counts.trash, icon: Trash2 },
-    { filter: { kind: "duplicates", mode: "exact" }, label: "重复项", count: counts.duplicates, icon: Copy },
+  const viewRows: Array<{ filter: VaultFilter; label: string; count: number; icon: ElementType }> = [
+    { filter: { kind: "all" }, label: "所有项目", count: counts.all, icon: ListAltOutlined },
+    { filter: { kind: "favorites" }, label: "收藏", count: counts.favorites, icon: FavoriteBorderOutlined },
+    { filter: { kind: "archive" }, label: "归档", count: counts.archive, icon: ArchiveOutlined },
+    { filter: { kind: "trash" }, label: "回收站", count: counts.trash, icon: DeleteOutlineOutlined },
+    { filter: { kind: "duplicates", mode: "exact" }, label: "重复项", count: counts.duplicates, icon: ContentCopyOutlined },
   ];
 
   return (
-    <nav className="vault-sidebar" aria-label="密码库视图">
-      <div className="vault-sidebar__group">
-        <h2>密码库</h2>
-        {viewRows.map((row) => (
-          <ViewButton
-            key={row.label}
-            icon={row.icon}
-            label={row.label}
-            count={row.count}
-            active={isActive(filter, row.filter)}
-            onClick={() => onFilterChange(row.filter)}
-          />
-        ))}
-      </div>
+    <Box component="nav" aria-label="密码库视图" sx={{ height: "100%", overflow: "auto", pb: 2 }}>
+      <GroupTitle>密码库</GroupTitle>
+      <List dense disablePadding>{viewRows.map((row) => (
+        <ViewButton key={row.label} icon={row.icon} label={row.label} count={row.count} active={isActive(filter, row.filter)} onClick={() => onFilterChange(row.filter)} />
+      ))}</List>
+      <Divider sx={{ my: 1 }} />
 
-      <div className="vault-sidebar__group">
-        <h2>安全工具</h2>
-        <Link className="vault-sidebar__item" href="/generator"><WandSparkles size={16} /><span>密码生成器</span></Link>
-        <Link className="vault-sidebar__item" href="/vault/totp"><Timer size={16} /><span>验证码</span></Link>
-        <Link className="vault-sidebar__item" href="/security/password-health"><ShieldAlert size={16} /><span>密码健康</span></Link>
-        <Link className="vault-sidebar__item" href="/sends"><Send size={16} /><span>Send</span></Link>
-        <Link className="vault-sidebar__item" href="/backup/import-export"><DatabaseBackup size={16} /><span>导入与导出</span></Link>
-      </div>
+      <GroupTitle>安全工具</GroupTitle>
+      <List dense disablePadding>
+        <ToolLink href="/generator" icon={AutoAwesomeOutlined}>密码生成器</ToolLink>
+        <ToolLink href="/vault/totp" icon={TimerOutlined}>验证码</ToolLink>
+        <ToolLink href="/security/password-health" icon={HealthAndSafetyOutlined}>密码健康</ToolLink>
+        <ToolLink href="/sends" icon={SendOutlined}>Send</ToolLink>
+        <ToolLink href="/backup/import-export" icon={ImportExportOutlined}>导入与导出</ToolLink>
+      </List>
+      <Divider sx={{ my: 1 }} />
 
-      <div className="vault-sidebar__group">
-        <h2>类型</h2>
-        {typeRows.map((row) => (
-          <ViewButton
-            key={row.type}
-            icon={row.icon}
-            label={row.label}
-            count={counts.types[row.type] ?? 0}
-            active={filter.kind === "type" && filter.type === row.type}
-            onClick={() => onFilterChange({ kind: "type", type: row.type })}
-          />
-        ))}
-      </div>
+      <GroupTitle>类型</GroupTitle>
+      <List dense disablePadding>{typeRows.map((row) => (
+        <ViewButton key={row.type} icon={row.icon} label={row.label} count={counts.types[row.type] ?? 0} active={filter.kind === "type" && filter.type === row.type} onClick={() => onFilterChange({ kind: "type", type: row.type })} />
+      ))}</List>
+      <Divider sx={{ my: 1 }} />
 
-      <div className="vault-sidebar__group">
-        <div className="vault-sidebar__group-heading">
-          <h2>文件夹</h2>
-          <Button size="sm" variant="ghost" icon={FolderCog} onClick={onManageFolders}>管理</Button>
-        </div>
-        {folders.length === 0 ? <p className="vault-sidebar__empty">暂无文件夹</p> : folders.map((folder) => (
-          <ViewButton
-            key={folder.id}
-            icon={Folder}
-            label={folder.name}
-            count={counts.folders[folder.id] ?? 0}
-            active={filter.kind === "folder" && filter.folderId === folder.id}
-            onClick={() => onFilterChange({ kind: "folder", folderId: folder.id })}
-          />
-        ))}
-      </div>
-    </nav>
+      <Stack direction="row" sx={{ px: 2, pt: 1, alignItems: "center", justifyContent: "space-between" }}>
+        <GroupTitle>文件夹</GroupTitle>
+        <Button size="small" variant="text" startIcon={<FolderSpecialOutlined />} onClick={onManageFolders}>管理</Button>
+      </Stack>
+      {folders.length === 0 ? <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>暂无文件夹</Typography> : (
+        <List dense disablePadding>{folders.map((folder) => (
+          <ViewButton key={folder.id} icon={FolderOutlined} label={folder.name} count={counts.folders[folder.id] ?? 0} active={filter.kind === "folder" && filter.folderId === folder.id} onClick={() => onFilterChange({ kind: "folder", folderId: folder.id })} />
+        ))}</List>
+      )}
+    </Box>
   );
 }

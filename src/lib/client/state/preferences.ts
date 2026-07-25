@@ -3,6 +3,7 @@
 export type ThemePreference = "system" | "light" | "dark";
 export type LocalePreference = "zh-CN" | "en";
 export type TimeoutAction = "lock" | "logout";
+export const PREFERENCES_CHANGED_EVENT = "vercelwarden:preferences-changed";
 
 export interface ClientPreferences {
   theme: ThemePreference;
@@ -37,6 +38,6 @@ export function savePreferences(preferences: ClientPreferences): void {
   localStorage.setItem("vercelwarden.locale", preferences.locale);
   localStorage.setItem("vercelwarden.lock-timeout-ms", String(preferences.lockTimeoutMs));
   localStorage.setItem("vercelwarden.timeout-action", preferences.timeoutAction);
-  document.documentElement.dataset.theme = preferences.theme === "system" ? "" : preferences.theme;
   document.documentElement.lang = preferences.locale;
+  window.dispatchEvent(new CustomEvent<ClientPreferences>(PREFERENCES_CHANGED_EVENT, { detail: preferences }));
 }

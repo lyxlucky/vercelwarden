@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { ToastProvider } from "@/components/primitives";
-import { AuthLifecycle } from "@/features/auth/AuthLifecycle";
+import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import { AppProviders } from "@/components/providers/AppProviders";
+import { COLOR_SCHEME_STORAGE_KEY, THEME_ATTRIBUTE, THEME_STORAGE_KEY } from "@/components/theme/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +15,12 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
 };
 
-export const viewport: Viewport = { themeColor: "#0f766e" };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f4f6f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#11161b" },
+  ],
+};
 
 export default function RootLayout({
   children,
@@ -21,8 +28,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="h-full" suppressHydrationWarning>
-      <body><ToastProvider><AuthLifecycle />{children}</ToastProvider></body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body>
+        <InitColorSchemeScript
+          attribute={THEME_ATTRIBUTE}
+          defaultMode="system"
+          modeStorageKey={THEME_STORAGE_KEY}
+          colorSchemeStorageKey={COLOR_SCHEME_STORAGE_KEY}
+        />
+        <AppRouterCacheProvider options={{ enableCssLayer: true }}>
+          <AppProviders>
+            <div id="main-content" tabIndex={-1}>{children}</div>
+          </AppProviders>
+        </AppRouterCacheProvider>
+      </body>
     </html>
   );
 }

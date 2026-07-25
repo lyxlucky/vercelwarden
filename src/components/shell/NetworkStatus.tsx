@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Trash2 } from "lucide-react";
-import { Button } from "@/components/primitives";
+import { CloudDoneOutlined, CloudOffOutlined, DeleteOutlined, SyncOutlined } from "@mui/icons-material";
+import { Alert, Button, Stack } from "@mui/material";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { authSecretStore } from "@/features/auth/secret-store";
 import { vaultStore } from "@/features/vault/store";
 import { clearVercelwardenLocalData } from "@/lib/client/offline/vault-cache";
@@ -21,6 +22,7 @@ const labels = {
 export function NetworkStatus() {
   const session = useSession();
   const [busy, setBusy] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const visible = session.phase !== "anonymous" && session.phase !== "bootstrapping";
   if (!visible) return null;
 
@@ -30,7 +32,6 @@ export function NetworkStatus() {
   }
 
   async function clearLocal() {
-    if (!window.confirm("清除本机的离线快照、缓存和账户绑定？服务器数据不会被删除。")) return;
     setBusy(true);
     try {
       await clearVercelwardenLocalData();
@@ -44,23 +45,43 @@ export function NetworkStatus() {
       window.location.replace("/lock");
     } finally {
       setBusy(false);
+      setConfirmClear(false);
     }
   }
 
+  const severity = session.connectivity === "online" ? "success" : session.connectivity === "syncing" ? "info" : "warning";
   return (
-    <aside className={`network-status network-status--${session.connectivity}`} aria-live="polite">
-      <span className="network-status__label">
-        {session.online ? <Cloud size={15} aria-hidden="true" /> : <CloudOff size={15} aria-hidden="true" />}
+    <>
+      <Alert
+        severity={severity}
+        icon={session.online ? <CloudDoneOutlined /> : <CloudOffOutlined />}
+        role="status"
+        aria-live="polite"
+        action={(
+          <Stack direction="row" spacing={1}>
+            <Button color="inherit" size="small" startIcon={<SyncOutlined />} onClick={() => void synchronize()} disabled={busy || !session.online || session.readOnly}>
+              同步
+            </Button>
+            <Button color="inherit" size="small" startIcon={<DeleteOutlined />} onClick={() => setConfirmClear(true)} disabled={busy}>
+              清除本机数据
+            </Button>
+          </Stack>
+        )}
+        sx={{ borderRadius: 0 }}
+      >
         {labels[session.connectivity]}
-      </span>
-      <span className="network-status__actions">
-        <Button variant="ghost" size="sm" onClick={() => void synchronize()} disabled={busy || !session.online || session.readOnly}>
-          <RefreshCw size={14} aria-hidden="true" /> 同步
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => void clearLocal()} disabled={busy}>
-          <Trash2 size={14} aria-hidden="true" /> 清除本机数据
-        </Button>
-      </span>
-    </aside>
+      </Alert>
+      <ConfirmDialog
+        open={confirmClear}
+        title="清除本机数据"
+        description="清除本机的离线快照、缓存和账户绑定。服务器数据不会被删除。"
+        consequences="此操作会立即锁定当前会话；之后需要重新登录或重新建立离线快照。"
+        confirmLabel="清除本机数据"
+        busy={busy}
+        tone="danger"
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={clearLocal}
+      />
+    </>
   );
 }

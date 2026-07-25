@@ -11,10 +11,16 @@ import { connectivityController } from "@/lib/client/state/connectivity";
 
 const authPaths = new Set(["/login", "/register", "/recover-2fa"]);
 
+function isPublicSendPath(pathname: string) {
+  return pathname === "/send" || pathname.startsWith("/send/");
+}
+
 export function AuthLifecycle() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (isPublicSendPath(pathname)) return;
+
     lockController.start();
     connectivityController.start();
     void registerServiceWorker();
