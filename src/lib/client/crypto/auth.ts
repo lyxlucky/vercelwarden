@@ -88,12 +88,27 @@ export async function deriveMasterPasswordHash(
 }
 
 async function stretchMasterKey(masterKey: Uint8Array) {
-  const source = await crypto.subtle.importKey("raw", owned(masterKey), "HKDF", false, ["deriveBits"]);
-  const derive = async (label: string) => new Uint8Array(await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: encoder.encode(label) },
-    source,
-    256
-  ));
+  // Bitwarden treats the KDF output as an existing PRK and performs only the
+  // RFC 5869 expand step. For one SHA-256 block: T(1) = HMAC(PRK, info || 0x01).
+  const source = await crypto.subtle.importKey(
+    "raw",
+    owned(masterKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const derive = async (label: string) => {
+    const info = encoder.encode(label);
+    const input = new Uint8Array(info.byteLength + 1);
+    input.set(info);
+    input[input.byteLength - 1] = 1;
+    try {
+      return new Uint8Array(await crypto.subtle.sign("HMAC", source, input));
+    } finally {
+      wipeBytes(info);
+      wipeBytes(input);
+    }
+  };
   return { encryptionKey: await derive("enc"), macKey: await derive("mac") };
 }
 
