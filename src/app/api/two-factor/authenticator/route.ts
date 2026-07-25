@@ -1,57 +1,65 @@
-import { NextRequest } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { verifyAuth } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
-import { verifyTotp, generateRecoveryCode } from "@/lib/totp";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { recoveryCodeHashes, twoFactorCredentials, users } from "@/db/schema";
+import { newUuid } from "@/lib/auth";
+import { authenticateRequest } from "@/lib/server/authorization/authorize";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { hashRecoveryCode } from "@/lib/server/auth/recovery-codes";
+import { sealServerSecret } from "@/lib/server/auth/server-secrets";
+import { ApiError, apiErrorResponse } from "@/lib/server/http/errors";
+import { generateRecoveryCode, verifyTotp } from "@/lib/totp";
 
-// PUT /api/two-factor/authenticator — confirm + persist a TOTP secret.
-// Body: { masterPasswordHash, key (base32 secret), token (6-digit code) }
-export async function PUT(request: NextRequest) {
-  const auth = await verifyAuth(request.headers.get("authorization"));
-  if (!auth) return unauthorized();
-
-  const body = await request.json().catch(() => null);
-  const hash = body?.masterPasswordHash;
-  const key = body?.key;
-  const token = body?.token;
-  if (!hash || !key || !token) return errorResponse("Missing required fields");
-
-  const pwOk = verifyPassword(
-    hash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!pwOk) return errorResponse("Invalid password");
-
-  if (!verifyTotp(key, token)) {
-    return errorResponse("Invalid authenticator code", 400, {
-      token: ["Invalid code"],
+export async function PUT(request: Request) {
+  try {
+    const auth = await authenticateRequest(request);
+    const body = await request.json().catch(() => null);
+    if (!body?.key || !body?.token) throw new ApiError(400, "validation_error", "Key and authenticator code are required.");
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.two-factor.manage",
+      legacyMasterPasswordHash: body.masterPasswordHash,
     });
+    if (!verifyTotp(body.key, body.token)) {
+      throw new ApiError(400, "invalid_authenticator_code", "The authenticator code is invalid.", { token: ["Invalid code"] });
+    }
+    const recoveryCode = generateRecoveryCode();
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(twoFactorCredentials).set({ status: "disabled" }).where(and(
+        eq(twoFactorCredentials.userUuid, auth.user.uuid),
+        eq(twoFactorCredentials.provider, "totp"),
+        eq(twoFactorCredentials.status, "active")
+      ));
+      await tx.insert(twoFactorCredentials).values({
+        uuid: newUuid(),
+        userUuid: auth.user.uuid,
+        provider: "totp",
+        name: typeof body.name === "string" ? body.name.trim().slice(0, 100) || "Authenticator" : "Authenticator",
+        status: "active",
+        secretCiphertext: sealServerSecret(body.key),
+        createdAt: now,
+      });
+      await tx.insert(recoveryCodeHashes).values({
+        uuid: newUuid(),
+        userUuid: auth.user.uuid,
+        codeHash: await hashRecoveryCode(recoveryCode),
+        createdAt: now,
+      });
+      await tx.update(users).set({ totpSecret: body.key, totpRecover: recoveryCode, updatedAt: now })
+        .where(eq(users.uuid, auth.user.uuid));
+    });
+    return Response.json({
+      enabled: true,
+      key: body.key,
+      recoveryCode,
+      object: "twoFactorAuthenticator",
+    }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-
-  const recoveryCode = auth.user.totpRecover ?? generateRecoveryCode();
-
-  await db
-    .update(users)
-    .set({
-      totpSecret: key,
-      totpRecover: recoveryCode,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.uuid, auth.user.uuid));
-
-  return jsonResponse({
-    enabled: true,
-    key,
-    object: "twoFactorAuthenticator",
-  });
 }
 
-// POST alias — older clients use POST for the same payload.
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   return PUT(request);
 }

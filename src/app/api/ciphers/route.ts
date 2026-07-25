@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { ciphers, folderCiphers } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
-import { jsonResponse, unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized, errorResponse } from "@/lib/responses";
 import { extractCipherData, serializeCipher } from "@/lib/cipher";
+import { commitUserMutation } from "@/lib/server/mutations/commit";
+import { formatCipherEtag, setCipherFolder } from "@/lib/server/vault/cipher-repository";
 
 // Read a cipher body field tolerating both camelCase (Vaultwarden 1.36.0)
 // and legacy PascalCase. Bitwarden clients in the field send camelCase.
@@ -32,12 +35,14 @@ export async function GET(request: NextRequest) {
     : [];
   const folderByCipher = new Map(links.map((l) => [l.cipherUuid, l.folderUuid]));
 
-  return jsonResponse({
+  return NextResponse.json({
     data: userCiphers.map((c) =>
       serializeCipher(c, { folderId: folderByCipher.get(c.uuid) ?? null })
     ),
     object: "list",
     continuationToken: null,
+  }, {
+    headers: { "Cache-Control": "no-store, max-age=0" },
   });
 }
 
@@ -57,32 +62,49 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const cipherId = newUuid();
 
-  await db.insert(ciphers).values({
-    uuid: cipherId,
+  const folderId = pick<string | null>(body, "folderId", "FolderId", null);
+  await commitUserMutation({
     userUuid: auth.user.uuid,
-    organizationUuid: pick<string | null>(body, "organizationId", "OrganizationId", null),
-    createdAt: now,
-    updatedAt: now,
-    type,
-    name,
-    notes: pick<string | null>(body, "notes", "Notes", null),
-    fields: body.fields || body.Fields ? JSON.stringify(body.fields ?? body.Fields) : null,
-    data: JSON.stringify(extractCipherData(body)),
-    key: pick<string | null>(body, "key", "Key", null),
-    passwordHistory:
-      body.passwordHistory || body.PasswordHistory
-        ? JSON.stringify(body.passwordHistory ?? body.PasswordHistory)
-        : null,
-    favorite: pick<boolean>(body, "favorite", "Favorite", false),
-    edit: pick<boolean>(body, "edit", "Edit", true),
-    reprompt: pick<number>(body, "reprompt", "Reprompt", 0),
+    resourceKind: "cipher",
+    resourceId: cipherId,
+    actingDeviceIdentifier: auth.device.identifier,
+    mutate: async (tx) => {
+      await tx.insert(ciphers).values({
+        uuid: cipherId,
+        userUuid: auth.user.uuid,
+        organizationUuid: pick<string | null>(body, "organizationId", "OrganizationId", null),
+        createdAt: now,
+        updatedAt: now,
+        type,
+        name,
+        notes: pick<string | null>(body, "notes", "Notes", null),
+        fields: body.fields || body.Fields ? JSON.stringify(body.fields ?? body.Fields) : null,
+        data: JSON.stringify(extractCipherData(body)),
+        key: pick<string | null>(body, "key", "Key", null),
+        passwordHistory:
+          body.passwordHistory || body.PasswordHistory
+            ? JSON.stringify(body.passwordHistory ?? body.PasswordHistory)
+            : null,
+        favorite: pick<boolean>(body, "favorite", "Favorite", false),
+        edit: pick<boolean>(body, "edit", "Edit", true),
+        reprompt: pick<number>(body, "reprompt", "Reprompt", 0),
+      });
+      if (folderId) {
+        await setCipherFolder(tx, {
+          userUuid: auth.user.uuid,
+          cipherUuid: cipherId,
+          folderUuid: folderId,
+        });
+      }
+    },
   });
 
-  const folderId = pick<string | null>(body, "folderId", "FolderId", null);
-  if (folderId) {
-    await db.insert(folderCiphers).values({ folderUuid: folderId, cipherUuid: cipherId });
-  }
-
   const [created] = await db.select().from(ciphers).where(eq(ciphers.uuid, cipherId)).limit(1);
-  return jsonResponse(serializeCipher(created!, { folderId }), 200);
+  return NextResponse.json(serializeCipher(created!, { folderId }), {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+      ETag: formatCipherEtag(created!.updatedAt),
+    },
+  });
 }

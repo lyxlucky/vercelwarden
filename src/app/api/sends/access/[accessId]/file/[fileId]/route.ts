@@ -1,56 +1,64 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { sends } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { timingSafeEqual } from "node:crypto";
-import { jsonResponse, notFound, errorResponse } from "@/lib/responses";
-import { safeJsonParse } from "@/lib/cipher";
+import { sendFiles } from "@/db/schema";
+import { errorResponse, jsonResponse, notFound } from "@/lib/responses";
 import { uuidFromAccessId } from "@/lib/send";
+import {
+  consumeSendAccess,
+  issueSendFileDownloadToken,
+  verifySendFileDownloadToken,
+} from "@/lib/server/sends/service";
 
-// POST /api/sends/access/[accessId]/file/[fileId] — public; returns the
-// download URL for a file send after access checks pass. `accessId` is the
-// base64url-encoded UUID (Vaultwarden Send::find_by_access_id).
+async function completeFile(sendUuid: string, fileUuid: string) {
+  const [file] = await db.select().from(sendFiles).where(and(
+    eq(sendFiles.uuid, fileUuid),
+    eq(sendFiles.sendUuid, sendUuid)
+  )).limit(1);
+  return file?.status === "complete" && file.blobUrl ? file : null;
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ accessId: string; fileId: string }> }
+) {
+  const { accessId, fileId } = await params;
+  const sendUuid = uuidFromAccessId(accessId);
+  if (!sendUuid) return notFound("Send not found");
+  const claims = verifySendFileDownloadToken(request.nextUrl.searchParams.get("token") ?? "");
+  if (!claims || claims.sendUuid !== sendUuid || claims.fileUuid !== fileId) {
+    return errorResponse("Send file download token is invalid or expired", 401);
+  }
+  const file = await completeFile(sendUuid, fileId);
+  if (!file) return notFound("File not found");
+  return NextResponse.redirect(file.blobUrl, { status: 302, headers: { "Cache-Control": "no-store, max-age=0" } });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ accessId: string; fileId: string }> }
 ) {
   const { accessId, fileId } = await params;
-  const body = await request.json().catch(() => ({}));
-  const password = body?.password as string | undefined;
-
   const sendUuid = uuidFromAccessId(accessId);
   if (!sendUuid) return notFound("Send not found");
-
-  const [send] = await db.select().from(sends).where(eq(sends.uuid, sendUuid)).limit(1);
-  if (!send || send.disabled || send.type !== 1) return notFound("Send not found");
-
-  const now = new Date();
-  if (send.deletionDate.getTime() <= now.getTime()) return notFound("Send has expired");
-  if (send.expirationDate && send.expirationDate.getTime() <= now.getTime()) {
-    return notFound("Send has expired");
+  const body = await request.json().catch(() => ({})) as { password?: string; downloadToken?: string };
+  let token = body.downloadToken ?? "";
+  let claims = verifySendFileDownloadToken(token);
+  if (!claims) {
+    const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, body.password));
+    if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
+    if (result.status !== "ok" || result.send.type !== 1) return notFound("Send not found or no longer available");
+    const issued = issueSendFileDownloadToken({ sendUuid, fileUuid: fileId });
+    token = issued.token;
+    claims = verifySendFileDownloadToken(token);
   }
-  if (send.maxAccessCount !== null && send.accessCount >= send.maxAccessCount) {
-    return notFound("Send access limit reached");
-  }
-
-  if (send.password) {
-    if (!password) {
-      return errorResponse("Password required", 401, { password: ["Required"] });
-    }
-    const a = Buffer.from(password);
-    const b = Buffer.from(send.password);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      return errorResponse("Invalid password", 401);
-    }
-  }
-
-  const data = safeJsonParse<{ id?: string; Id?: string; url?: string }>(send.data);
-  const fileMatches = data && (data.id === fileId || data.Id === fileId);
-  if (!data || !fileMatches || !data.url) return notFound("File not found");
-
+  if (!claims || claims.sendUuid !== sendUuid || claims.fileUuid !== fileId) return errorResponse("Invalid download authorization", 401);
+  const file = await completeFile(sendUuid, fileId);
+  if (!file) return notFound("File not found");
   return jsonResponse({
     object: "send-file-download",
-    id: send.uuid,
-    url: data.url,
+    id: file.uuid,
+    url: `${request.nextUrl.origin}/api/sends/access/${encodeURIComponent(accessId)}/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`,
+    checksum: file.checksum,
   });
 }

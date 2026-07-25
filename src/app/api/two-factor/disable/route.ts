@@ -1,41 +1,41 @@
-import { NextRequest } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { verifyAuth } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { twoFactorCredentials, users } from "@/db/schema";
+import { authenticateRequest } from "@/lib/server/authorization/authorize";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { ApiError, apiErrorResponse } from "@/lib/server/http/errors";
 
-// PUT /api/two-factor/disable
-// Body: { masterPasswordHash, type (provider id, 0=Authenticator) }
-export async function PUT(request: NextRequest) {
-  const auth = await verifyAuth(request.headers.get("authorization"));
-  if (!auth) return unauthorized();
+const providers = new Map<number, "totp" | "yubikey" | "webauthn">([[0, "totp"], [3, "yubikey"], [7, "webauthn"]]);
 
-  const body = await request.json().catch(() => null);
-  const hash = body?.masterPasswordHash;
-  if (!hash) return errorResponse("Missing masterPasswordHash");
-
-  const ok = verifyPassword(
-    hash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!ok) return errorResponse("Invalid password");
-
-  await db
-    .update(users)
-    .set({ totpSecret: null, totpRecover: null, updatedAt: new Date() })
-    .where(eq(users.uuid, auth.user.uuid));
-
-  return jsonResponse({
-    enabled: false,
-    type: body?.type ?? 0,
-    object: "twoFactorProvider",
-  });
+export async function PUT(request: Request) {
+  try {
+    const auth = await authenticateRequest(request);
+    const body = await request.json().catch(() => null);
+    const provider = providers.get(Number(body?.type));
+    if (!provider) throw new ApiError(400, "validation_error", "The two-factor provider type is invalid.");
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.two-factor.manage",
+      legacyMasterPasswordHash: body?.masterPasswordHash,
+    });
+    await db.transaction(async (tx) => {
+      await tx.update(twoFactorCredentials).set({ status: "disabled" }).where(and(
+        eq(twoFactorCredentials.userUuid, auth.user.uuid),
+        eq(twoFactorCredentials.provider, provider)
+      ));
+      if (provider === "totp") {
+        await tx.update(users).set({ totpSecret: null, updatedAt: new Date() }).where(eq(users.uuid, auth.user.uuid));
+      }
+    });
+    return Response.json({ enabled: false, type: Number(body.type), object: "twoFactorProvider" }, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   return PUT(request);
 }

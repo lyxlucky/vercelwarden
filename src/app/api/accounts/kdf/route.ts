@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { devices, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
 import {
   hashPassword,
   newSalt,
-  verifyPassword,
 } from "@/lib/password";
 import { unauthorized, errorResponse } from "@/lib/responses";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { apiErrorResponse } from "@/lib/server/http/errors";
+import { recordAuditEvent } from "@/lib/server/audit/events";
 
 // POST /api/accounts/kdf — change client-side KDF settings.
 // Changing KDF reissues both `key` (encrypted with new master key) and
@@ -26,24 +28,25 @@ export async function POST(request: NextRequest) {
   const kdfParallelism = body?.kdfParallelism;
   const key = body?.key;
 
-  if (!masterPasswordHash || kdfType === undefined || !key) {
+  if (!newMasterPasswordHash || kdfType === undefined || !key) {
     return errorResponse("Missing required fields");
   }
-
-  const ok = verifyPassword(
-    masterPasswordHash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!ok) return errorResponse("Invalid password");
+  try {
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.kdf.change",
+      legacyMasterPasswordHash: masterPasswordHash,
+    });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 
   const salt = newSalt();
   const passwordHash = hashPassword(newMasterPasswordHash, salt);
 
-  await db
-    .update(users)
-    .set({
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({
       clientKdfType: kdfType,
       clientKdfIter: kdfIterations ?? 600000,
       clientKdfMemory: kdfMemory ?? null,
@@ -53,8 +56,20 @@ export async function POST(request: NextRequest) {
       salt,
       securityStamp: newUuid(),
       updatedAt: new Date(),
-    })
-    .where(eq(users.uuid, auth.user.uuid));
+    }).where(eq(users.uuid, auth.user.uuid));
+    await tx.update(devices).set({ refreshToken: "", refreshTokenHash: null, updatedAt: new Date() })
+      .where(eq(devices.userUuid, auth.user.uuid));
+  });
+
+  await recordAuditEvent({
+    action: "account.kdf.change",
+    actorUserUuid: auth.user.uuid,
+    actorEmailSnapshot: auth.user.email,
+    targetId: auth.user.uuid,
+    outcome: "succeeded",
+    request,
+    metadata: { kdfType, iterations: kdfIterations ?? 600000 },
+  });
 
   return new Response(null, { status: 200 });
 }

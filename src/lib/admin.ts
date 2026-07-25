@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 
 function getAdminPassword(): string {
@@ -9,7 +8,7 @@ function getAdminPassword(): string {
   return pw;
 }
 
-export function checkAdminAuth(request: NextRequest): boolean {
+export function checkAdminAuth(request: Pick<Request, "headers">): boolean {
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Basic ")) return false;
 

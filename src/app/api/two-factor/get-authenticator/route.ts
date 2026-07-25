@@ -1,39 +1,27 @@
-import { NextRequest } from "next/server";
-import { verifyAuth } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
-import {
-  generateTotpSecret,
-  buildOtpAuthUri,
-} from "@/lib/totp";
-import { unauthorized, errorResponse, jsonResponse } from "@/lib/responses";
+import { authenticateRequest } from "@/lib/server/authorization/authorize";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { apiErrorResponse } from "@/lib/server/http/errors";
+import { buildOtpAuthUri, generateTotpSecret } from "@/lib/totp";
 
-// POST /api/two-factor/get-authenticator
-// Returns the currently configured secret (if any) plus an otpauth URI for QR.
-// Client posts `masterPasswordHash` for confirmation.
-export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request.headers.get("authorization"));
-  if (!auth) return unauthorized();
-
-  const body = await request.json().catch(() => null);
-  const hash = body?.masterPasswordHash ?? body?.secret;
-  if (!hash) return errorResponse("Missing masterPasswordHash");
-
-  const ok = verifyPassword(
-    hash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!ok) return errorResponse("Invalid password");
-
-  // If already enabled, return the existing secret; otherwise generate a new
-  // unconfirmed secret (it is only persisted once the user verifies the code).
-  const enabled = !!auth.user.totpSecret;
-  const key = auth.user.totpSecret ?? generateTotpSecret();
-
-  return jsonResponse({
-    enabled,
-    key,
-    object: "twoFactorAuthenticator",
-  });
+export async function POST(request: Request) {
+  try {
+    const auth = await authenticateRequest(request);
+    const body = await request.json().catch(() => ({}));
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.two-factor.manage",
+      legacyMasterPasswordHash: body.masterPasswordHash ?? body.secret,
+    });
+    const enabled = Boolean(auth.user.totpSecret);
+    const key = auth.user.totpSecret ?? generateTotpSecret();
+    return Response.json({
+      enabled,
+      key,
+      uri: buildOtpAuthUri(key, auth.user.email),
+      object: "twoFactorAuthenticator",
+    }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 }

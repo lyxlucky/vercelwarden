@@ -1,5 +1,6 @@
 import type { ciphers, attachments as attachmentsTbl } from "@/db/schema";
 import { serializeAttachment } from "@/lib/attachment";
+import { cipherTypeKey, extractTypedCipherPayload } from "@/lib/cipher-types";
 
 export function safeJsonParse<T = unknown>(s: string | null | undefined): T | null {
   if (!s) return null;
@@ -11,18 +12,7 @@ export function safeJsonParse<T = unknown>(s: string | null | undefined): T | nu
 }
 
 export function extractCipherData(body: Record<string, unknown>) {
-  // Body keys from clients are camelCase (login, secureNote, ...). Tolerate
-  // legacy PascalCase too because CLI / older flows still send those.
-  for (const key of [
-    "login", "Login",
-    "secureNote", "SecureNote",
-    "card", "Card",
-    "identity", "Identity",
-    "sshKey", "SshKey",
-  ]) {
-    if (body[key]) return body[key];
-  }
-  return {};
+  return extractTypedCipherPayload(body);
 }
 
 interface SerializeOpts {
@@ -88,10 +78,13 @@ export function serializeCipher(
     card: null,
     identity: null,
     sshKey: null,
+    bankAccount: null,
+    drivingLicence: null,
+    passport: null,
 
     folderId: opts.folderId ?? null,
     favorite: opts.favorite ?? cipher.favorite,
-    archivedDate: null,
+    archivedDate: cipher.archivedAt?.toISOString() ?? null,
     edit: cipher.edit,
     viewPassword: true,
     permissions: {
@@ -100,13 +93,7 @@ export function serializeCipher(
     },
   };
 
-  const typeKey =
-    cipher.type === 1 ? "login" :
-    cipher.type === 2 ? "secureNote" :
-    cipher.type === 3 ? "card" :
-    cipher.type === 4 ? "identity" :
-    cipher.type === 5 ? "sshKey" :
-    null;
+  const typeKey = cipherTypeKey(cipher.type);
   if (typeKey) out[typeKey] = typeData;
 
   return out;

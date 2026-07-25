@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
 
 # next.js
 /.next/
@@ -19,9 +21,15 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
 *.pem
 
 # debug
@@ -34,13 +42,24 @@ yarn-error.log*
 .env*
 
 # vercel
-.vercel
+/.vercel/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# drizzle
-/drizzle/
+# local databases and migration scratch
+/.tmp/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
 
-.vercel
+# CodeGraph local index
+/.codegraph/codegraph.db
+/.codegraph/codegraph.db-*
+/.codegraph/logs/
+
+# local runtime and backup artifacts
+/.turbo/
+*.vwb

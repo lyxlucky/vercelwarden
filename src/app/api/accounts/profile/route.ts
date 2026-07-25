@@ -4,6 +4,8 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, buildProfile } from "@/lib/auth";
 import { jsonResponse, unauthorized } from "@/lib/responses";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { apiErrorResponse } from "@/lib/server/http/errors";
 
 // GET /api/accounts/profile
 export async function GET(request: NextRequest) {
@@ -21,6 +23,16 @@ export async function PUT(request: NextRequest) {
   const patch: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (typeof body.name === "string") patch.name = body.name;
   if (typeof body.masterPasswordHint === "string" || body.masterPasswordHint === null) {
+    try {
+      await authorizeAccountMutation({
+        request,
+        auth,
+        purpose: "account.hint.change",
+        legacyMasterPasswordHash: body.masterPasswordHash,
+      });
+    } catch (error) {
+      return apiErrorResponse(error);
+    }
     patch.passwordHint = body.masterPasswordHint;
   }
   if (typeof body.avatarColor === "string" || body.avatarColor === null) {

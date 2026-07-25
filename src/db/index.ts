@@ -29,7 +29,7 @@ export const db: DbType = new Proxy({} as DbType, {
     const database = getDb();
     const value = (database as unknown as Record<string | symbol, unknown>)[prop];
     if (typeof value === "function") {
-      return (value as Function).bind(database);
+      return (value as (...args: unknown[]) => unknown).bind(database);
     }
     return value;
   },

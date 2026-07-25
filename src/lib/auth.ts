@@ -36,6 +36,7 @@ export async function generateTokenPair(
     device: device.uuid,
     email: user.email,
     name: user.name,
+    role: user.role,
     premium: true,
     email_verified: !!user.verifiedAt,
     sstamp: user.securityStamp,
@@ -116,6 +117,10 @@ export async function verifyAuth(authHeader: string | null): Promise<AuthResult 
   const [device] = await db.select().from(devices).where(eq(devices.uuid, deviceUuid)).limit(1);
   if (!device) {
     console.info(`verifyAuth: device ${deviceUuid} not found`);
+    return null;
+  }
+  if (device.revokedAt) {
+    console.info(`verifyAuth: device ${deviceUuid} is revoked`);
     return null;
   }
   if (device.userUuid !== user.uuid) {

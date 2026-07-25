@@ -3,8 +3,9 @@ import { db } from "@/db";
 import { users, devices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
-import { unauthorized, errorResponse } from "@/lib/responses";
+import { unauthorized } from "@/lib/responses";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { apiErrorResponse } from "@/lib/server/http/errors";
 
 // POST /api/accounts/security-stamp — rotate the user's security stamp;
 // invalidates all outstanding access tokens and refresh tokens.
@@ -14,15 +15,16 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const hash = body?.masterPasswordHash ?? body?.secret;
-  if (!hash) return errorResponse("Missing masterPasswordHash");
-
-  const ok = verifyPassword(
-    hash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!ok) return errorResponse("Invalid password");
+  try {
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.security-stamp.rotate",
+      legacyMasterPasswordHash: hash,
+    });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 
   await db
     .update(users)
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
   // each device will require a fresh password login.
   await db
     .update(devices)
-    .set({ refreshToken: "", updatedAt: new Date() })
+    .set({ refreshToken: "", refreshTokenHash: null, updatedAt: new Date() })
     .where(eq(devices.userUuid, auth.user.uuid));
 
   return new Response(null, { status: 200 });

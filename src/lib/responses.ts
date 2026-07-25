@@ -44,6 +44,8 @@ export function tokenResponse(params: {
   user: typeof users.$inferSelect;
   masterPasswordPolicy: unknown;
   twoFactorToken?: string | null;
+  exposeRefreshToken?: boolean;
+  extensions?: Record<string, unknown>;
 }) {
   const { user } = params;
   const akey = user.akey ?? "";
@@ -81,7 +83,6 @@ export function tokenResponse(params: {
     access_token: params.accessToken,
     expires_in: params.expiresIn,
     token_type: params.tokenType,
-    refresh_token: params.refreshToken,
     scope: "api offline_access",
 
     // Bitwarden protocol fields (PascalCase)
@@ -101,8 +102,13 @@ export function tokenResponse(params: {
     },
   };
 
+  if (params.exposeRefreshToken !== false) body.refresh_token = params.refreshToken;
+  if (params.extensions) Object.assign(body, params.extensions);
+
   if (akey) body.Key = akey;
   if (params.twoFactorToken) body.TwoFactorToken = params.twoFactorToken;
 
-  return NextResponse.json(body);
+  return NextResponse.json(body, {
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }

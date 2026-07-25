@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { devices, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAuth, newUuid } from "@/lib/auth";
-import { hashPassword, newSalt, verifyPassword } from "@/lib/password";
+import { hashPassword, newSalt } from "@/lib/password";
 import { unauthorized, errorResponse } from "@/lib/responses";
+import { authorizeAccountMutation } from "@/lib/server/auth/account-mutation";
+import { apiErrorResponse } from "@/lib/server/http/errors";
+import { recordAuditEvent } from "@/lib/server/audit/events";
 
 // POST /api/accounts/password — change master password
 export async function POST(request: NextRequest) {
@@ -16,31 +19,46 @@ export async function POST(request: NextRequest) {
   const newMasterPasswordHash = body?.newMasterPasswordHash;
   const key = body?.key;
 
-  if (!masterPasswordHash || !newMasterPasswordHash || !key) {
+  if (!newMasterPasswordHash || !key) {
     return errorResponse("Missing required fields");
   }
-
-  const ok = verifyPassword(
-    masterPasswordHash,
-    auth.user.passwordHash as Uint8Array,
-    auth.user.salt as Uint8Array,
-    auth.user.passwordIterations
-  );
-  if (!ok) return errorResponse("Invalid current password");
+  try {
+    await authorizeAccountMutation({
+      request,
+      auth,
+      purpose: "account.password.change",
+      legacyMasterPasswordHash: masterPasswordHash,
+    });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 
   const salt = newSalt();
   const passwordHash = hashPassword(newMasterPasswordHash, salt);
 
-  await db
-    .update(users)
-    .set({
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({
       passwordHash,
       salt,
       akey: key,
       securityStamp: newUuid(),
       updatedAt: new Date(),
-    })
-    .where(eq(users.uuid, auth.user.uuid));
+    }).where(eq(users.uuid, auth.user.uuid));
+    await tx.update(devices).set({
+      refreshToken: "",
+      refreshTokenHash: null,
+      updatedAt: new Date(),
+    }).where(eq(devices.userUuid, auth.user.uuid));
+  });
+
+  await recordAuditEvent({
+    action: "account.password.change",
+    actorUserUuid: auth.user.uuid,
+    actorEmailSnapshot: auth.user.email,
+    targetId: auth.user.uuid,
+    outcome: "succeeded",
+    request,
+  });
 
   return new Response(null, { status: 200 });
 }

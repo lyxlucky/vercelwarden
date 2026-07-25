@@ -1,4 +1,4 @@
-import type { sends } from "@/db/schema";
+import type { sendFiles, sends } from "@/db/schema";
 import { safeJsonParse } from "@/lib/cipher";
 
 // Send.accessId is the UUID encoded as base64url without padding (16 raw
@@ -31,15 +31,23 @@ export function uuidFromAccessId(accessId: string): string | null {
 
 // Send response — Vaultwarden Send::to_json (db/models/send.rs:140). Fully camelCase.
 // `size` inside data must be a STRING (mobile clients expect that).
-export function serializeSend(send: typeof sends.$inferSelect) {
+function serializedFile(file: typeof sendFiles.$inferSelect | null | undefined) {
+  if (!file || file.status !== "complete") return null;
+  return {
+    id: file.uuid,
+    fileName: file.fileName,
+    size: String(file.fileSize),
+    sizeName: null,
+    key: file.key,
+    checksum: file.checksum,
+  };
+}
+
+export function serializeSend(send: typeof sends.$inferSelect, file?: typeof sendFiles.$inferSelect | null) {
   const data = safeJsonParse<Record<string, unknown>>(send.data) ?? {};
   if (typeof data.size === "number") {
     data.size = String(data.size);
   }
-
-  const passwordEncoded = send.password
-    ? Buffer.from(send.password).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
-    : null;
 
   return {
     id: send.uuid,
@@ -49,12 +57,12 @@ export function serializeSend(send: typeof sends.$inferSelect) {
     name: send.name,
     notes: send.notes,
     text: send.type === 0 ? data : null,
-    file: send.type === 1 ? data : null,
+    file: send.type === 1 ? serializedFile(file) ?? data : null,
 
     key: send.key,
     maxAccessCount: send.maxAccessCount,
     accessCount: send.accessCount,
-    password: passwordEncoded,
+    password: send.password ? "protected" : null,
     authType: send.password ? 1 : 0,
     disabled: send.disabled,
     hideEmail: send.hideEmail,
@@ -67,7 +75,12 @@ export function serializeSend(send: typeof sends.$inferSelect) {
 }
 
 // Public access response — Vaultwarden Send::to_json_access (send.rs:173).
-export function serializeSendAccess(send: typeof sends.$inferSelect, creatorIdentifier: string | null) {
+export function serializeSendAccess(
+  send: typeof sends.$inferSelect,
+  creatorIdentifier: string | null,
+  file?: typeof sendFiles.$inferSelect | null,
+  download?: { token: string; expiresAt: Date } | null
+) {
   const data = safeJsonParse<Record<string, unknown>>(send.data) ?? {};
   if (typeof data.size === "number") {
     data.size = String(data.size);
@@ -77,7 +90,12 @@ export function serializeSendAccess(send: typeof sends.$inferSelect, creatorIden
     type: send.type,
     name: send.name,
     text: send.type === 0 ? data : null,
-    file: send.type === 1 ? data : null,
+    file: send.type === 1
+      ? {
+          ...(serializedFile(file) ?? data),
+          ...(download ? { downloadToken: download.token, downloadExpiresAt: download.expiresAt.toISOString() } : {}),
+        }
+      : null,
     expirationDate: send.expirationDate?.toISOString() ?? null,
     creatorIdentifier,
     object: "send-access",

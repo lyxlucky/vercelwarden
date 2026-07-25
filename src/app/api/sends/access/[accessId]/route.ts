@@ -1,58 +1,30 @@
 import { NextRequest } from "next/server";
-import { db } from "@/db";
-import { sends, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { timingSafeEqual } from "node:crypto";
-import { jsonResponse, notFound, errorResponse } from "@/lib/responses";
+import { db } from "@/db";
+import { sendFiles, users } from "@/db/schema";
+import { errorResponse, jsonResponse, notFound } from "@/lib/responses";
 import { serializeSendAccess, uuidFromAccessId } from "@/lib/send";
+import { consumeSendAccess, issueSendFileDownloadToken } from "@/lib/server/sends/service";
 
-// POST /api/sends/access/[accessId] — public; recipients POST the access password.
-// `accessId` is the base64url-encoded UUID (Vaultwarden Send::find_by_access_id).
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ accessId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ accessId: string }> }) {
   const { accessId } = await params;
   const body = await request.json().catch(() => ({}));
-  const password = body?.password as string | undefined;
-
   const sendUuid = uuidFromAccessId(accessId);
   if (!sendUuid) return notFound("Send not found");
-
-  const [send] = await db.select().from(sends).where(eq(sends.uuid, sendUuid)).limit(1);
-  if (!send || send.disabled) return notFound("Send not found");
-
-  const now = new Date();
-  if (send.deletionDate.getTime() <= now.getTime()) return notFound("Send has expired");
-  if (send.expirationDate && send.expirationDate.getTime() <= now.getTime()) {
-    return notFound("Send has expired");
-  }
-  if (send.maxAccessCount !== null && send.accessCount >= send.maxAccessCount) {
-    return notFound("Send access limit reached");
-  }
-
-  if (send.password) {
-    if (!password) {
-      return errorResponse("Password required", 401, { password: ["Required"] });
-    }
-    const a = Buffer.from(password);
-    const b = Buffer.from(send.password);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      return errorResponse("Invalid password", 401);
-    }
-  }
-
-  await db
-    .update(sends)
-    .set({ accessCount: send.accessCount + 1, updatedAt: new Date() })
-    .where(eq(sends.uuid, send.uuid));
-
-  // creatorIdentifier is the creator email unless hideEmail is set.
+  const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, typeof body?.password === "string" ? body.password : undefined));
+  if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
+  if (result.status !== "ok") return notFound("Send not found or no longer available");
   let creatorIdentifier: string | null = null;
-  if (!send.hideEmail) {
-    const [owner] = await db.select().from(users).where(eq(users.uuid, send.userUuid)).limit(1);
+  if (!result.send.hideEmail) {
+    const [owner] = await db.select().from(users).where(eq(users.uuid, result.send.userUuid)).limit(1);
     creatorIdentifier = owner?.email ?? null;
   }
-
-  return jsonResponse(serializeSendAccess(send, creatorIdentifier));
+  const [file] = result.send.type === 1
+    ? await db.select().from(sendFiles).where(eq(sendFiles.sendUuid, result.send.uuid)).limit(1)
+    : [];
+  if (result.send.type === 1 && (!file || file.status !== "complete")) return notFound("Send file not found");
+  const download = file
+    ? issueSendFileDownloadToken({ sendUuid: result.send.uuid, fileUuid: file.uuid })
+    : null;
+  return jsonResponse(serializeSendAccess(result.send, creatorIdentifier, file, download));
 }
