@@ -82,14 +82,30 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "color"> { invalid?: boolean }
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ invalid, ...props }, ref) {
-  return <OutlinedInput inputRef={ref} error={invalid} size="small" fullWidth {...props} />;
+  return <OutlinedInput inputRef={ref} error={invalid} fullWidth {...props} />;
 });
 
 export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
   const id = useId();
   const helperId = `${id}-helper`;
   const control = isValidElement(children)
-    ? cloneElement(children as ReactElement<{ id?: string; "aria-describedby"?: string }>, { id, "aria-describedby": hint || error ? helperId : undefined })
+    ? (() => {
+        const element = children as ReactElement<{
+          id?: string;
+          className?: string;
+          "aria-describedby"?: string;
+          "aria-invalid"?: boolean;
+        }>;
+        const intrinsicControl = typeof element.type === "string" && ["input", "select", "textarea"].includes(element.type);
+        return cloneElement(element, {
+          id,
+          "aria-describedby": hint || error ? helperId : undefined,
+          ...(intrinsicControl ? {
+            className: ["vw-input", element.props.className].filter(Boolean).join(" "),
+            "aria-invalid": Boolean(error),
+          } : {}),
+        });
+      })()
     : children;
   return (
     <FormControl error={Boolean(error)}>

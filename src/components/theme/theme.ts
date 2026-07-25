@@ -18,7 +18,7 @@ export const theme = createTheme({
         warning: { main: "#d97706" },
         info: { main: "#2563eb" },
         success: { main: "#15803d" },
-        background: { default: "#f6f8fc", paper: "#ffffff" },
+        background: { default: "#f4f7fb", paper: "#ffffff" },
         text: { primary: "#0f172a", secondary: "#475569" },
         divider: "#dbe3ef",
       },
@@ -56,10 +56,6 @@ export const theme = createTheme({
           color: muiTheme.palette.text.primary,
           ...muiTheme.applyStyles("dark", { colorScheme: "dark" }),
         },
-        "*:focus-visible": {
-          outline: `3px solid ${muiTheme.palette.info.main}`,
-          outlineOffset: 2,
-        },
         "@media (prefers-reduced-motion: reduce)": {
           "*, *::before, *::after": {
             animationDuration: "0.01ms !important",
@@ -73,17 +69,32 @@ export const theme = createTheme({
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: {
-        root: {
+        root: ({ theme: muiTheme }) => ({
           minHeight: 44,
           borderRadius: 10,
           paddingInline: 18,
           transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease",
-        },
+          "&.Mui-focusVisible": {
+            outline: `3px solid ${muiTheme.palette.primary.main}38`,
+            outlineOffset: 2,
+          },
+        }),
+        sizeSmall: { minHeight: 36, paddingInline: 12 },
         contained: { boxShadow: "none", "&:hover": { boxShadow: "none" } },
       },
     },
-    MuiIconButton: { styleOverrides: { root: { borderRadius: 10 } } },
-    MuiTextField: { defaultProps: { fullWidth: true, variant: "outlined" } },
+    MuiIconButton: {
+      styleOverrides: {
+        root: ({ theme: muiTheme }) => ({
+          borderRadius: 10,
+          "&.Mui-focusVisible": {
+            outline: `3px solid ${muiTheme.palette.primary.main}38`,
+            outlineOffset: 2,
+          },
+        }),
+      },
+    },
+    MuiTextField: { defaultProps: { fullWidth: true, variant: "outlined", size: "medium" } },
     MuiFormControl: { defaultProps: { fullWidth: true } },
     MuiOutlinedInput: {
       styleOverrides: {
@@ -99,6 +110,10 @@ export const theme = createTheme({
           "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#60a5fa" },
           "&.Mui-focused": { boxShadow: "0 0 0 3px rgba(37, 99, 235, 0.12)" },
           "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#2563eb", borderWidth: 2 },
+          "& input:focus-visible, & textarea:focus-visible, & .MuiSelect-select:focus-visible": {
+            outline: "none",
+            boxShadow: "none",
+          },
           "&.Mui-error": { boxShadow: "none" },
           "&.Mui-disabled": { backgroundColor: "#f1f5f9" },
           ...muiTheme.applyStyles("dark", {
@@ -123,6 +138,17 @@ export const theme = createTheme({
             color: "#94a3b8",
             "&.Mui-focused": { color: "#60a5fa" },
           }),
+        }),
+      },
+    },
+    MuiFormLabel: {
+      styleOverrides: {
+        root: ({ theme: muiTheme }) => ({
+          color: muiTheme.palette.text.primary,
+          fontSize: "0.875rem",
+          fontWeight: 600,
+          lineHeight: 1.4,
+          "&.Mui-focused": { color: muiTheme.palette.text.primary },
         }),
       },
     },
