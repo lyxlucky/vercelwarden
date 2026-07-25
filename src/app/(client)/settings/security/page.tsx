@@ -1,26 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { KeyRound, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
-import { Button, Field, Input } from "@/components/primitives";
+import AddOutlined from "@mui/icons-material/AddOutlined";
+import DeleteOutlineOutlined from "@mui/icons-material/DeleteOutlineOutlined";
+import KeyOutlined from "@mui/icons-material/KeyOutlined";
+import RefreshOutlined from "@mui/icons-material/RefreshOutlined";
+import SecurityOutlined from "@mui/icons-material/SecurityOutlined";
+import { Alert, Box, Button, Checkbox, FormControlLabel, List, ListItem, ListItemIcon, ListItemText, Stack, TextField, Typography } from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
-import { SettingsNav } from "@/features/security/SettingsNav";
-import {
-  addYubiKey,
-  beginTotpSetup,
-  createAccountPasskey,
-  createTwoFactorPasskey,
-  deleteAccountPasskey,
-  deleteTwoFactorPasskey,
-  disableTwoFactor,
-  finishTotpSetup,
-  listAccountPasskeys,
-  listTwoFactorCredentials,
-  renameTwoFactorCredential,
-  rotateRecoveryCodes,
-  type AccountPasskeySummary,
-  type TwoFactorCredential,
-} from "@/features/security/api";
+import { AsyncState } from "@/components/ui/AsyncState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { addYubiKey, beginTotpSetup, createAccountPasskey, createTwoFactorPasskey, deleteAccountPasskey, deleteTwoFactorPasskey, disableTwoFactor, finishTotpSetup, listAccountPasskeys, listTwoFactorCredentials, renameTwoFactorCredential, rotateRecoveryCodes, type AccountPasskeySummary, type TwoFactorCredential } from "@/features/security/api";
 import { useSession } from "@/lib/client/state/session-store";
 
 export default function SecuritySettingsPage() {
@@ -43,20 +34,13 @@ export default function SecuritySettingsPage() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const [nextCredentials, nextPasskeys] = await Promise.all([
-      listTwoFactorCredentials(),
-      session.capabilities["auth.accountPasskey"] ? listAccountPasskeys() : Promise.resolve([]),
-    ]);
+    const [nextCredentials, nextPasskeys] = await Promise.all([listTwoFactorCredentials(), session.capabilities["auth.accountPasskey"] ? listAccountPasskeys() : Promise.resolve([])]);
     setCredentials(nextCredentials);
     setCredentialNames(Object.fromEntries(nextCredentials.map((credential) => [credential.id, credential.name])));
     setPasskeys(nextPasskeys);
   }, [session.capabilities]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void load().catch((reason) => setError(reason instanceof Error ? reason.message : "无法加载安全凭据。"));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+
+  useEffect(() => { const timer = window.setTimeout(() => { void load().catch((reason) => setError(reason instanceof Error ? reason.message : "无法加载安全凭据。")); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
   const run = async (action: () => Promise<unknown>, success: string, reload = true) => {
     setBusy(true); setError(""); setMessage("");
@@ -67,27 +51,32 @@ export default function SecuritySettingsPage() {
 
   return (
     <RouteGuard requireOnline>
-      <main className="settings-page">
-        <SettingsNav />
-        <header className="settings-header"><h1>安全凭据</h1><p>管理二步验证、恢复码与账号 Passkey。所有变更均需要用途绑定的再次验证。</p></header>
-        {error ? <p className="tool-error" role="alert">{error}</p> : null}{message ? <p className="settings-success" role="status">{message}</p> : null}
-        <section className="settings-card settings-grid"><h2>再次验证</h2><Field label="当前主密码"><Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></Field></section>
-        <section className="settings-card"><h2>已配置的二步验证</h2>
-          <div className="settings-list">{credentials.length ? credentials.map((credential) => <div key={credential.id} className="settings-row"><ShieldCheck size={18} aria-hidden="true" /><div><Input aria-label={`${credential.name} 的名称`} value={credentialNames[credential.id] ?? credential.name} disabled={credential.id === "legacy-totp"} onChange={(event) => setCredentialNames({ ...credentialNames, [credential.id]: event.target.value })} /><span>{credential.provider} · {credential.status}</span></div><Button size="sm" disabled={busy || !password || credential.id === "legacy-totp" || !credentialNames[credential.id]?.trim() || credentialNames[credential.id] === credential.name} onClick={() => void run(() => renameTwoFactorCredential(credential.id, credentialNames[credential.id], password), "验证方式名称已更新。")}>保存名称</Button><Button size="sm" variant="danger" icon={Trash2} disabled={busy || !password} onClick={() => void run(() => credential.provider === "webauthn" ? deleteTwoFactorPasskey(credential.id, password) : disableTwoFactor(credential.type, password), "验证方式已禁用。")}>禁用</Button></div>) : <p>尚未配置二步验证。</p>}</div>
-        </section>
-        <section className="settings-card settings-grid"><h2>验证器 (TOTP)</h2>
-          {!totpKey ? <div className="settings-actions"><Button icon={Plus} disabled={busy || !password} onClick={() => void run(async () => { const setup = await beginTotpSetup(password); setTotpKey(setup.key); setTotpUri(setup.uri); }, "已生成待确认密钥。", false)}>开始设置</Button></div> : <>
-            <Field label="密钥"><Input readOnly value={totpKey} /></Field><Field label="OTP Auth URI"><Input readOnly value={totpUri} /></Field><Field label="名称"><Input value={totpName} onChange={(event) => setTotpName(event.target.value)} /></Field><Field label="6 位验证码"><Input inputMode="numeric" autoComplete="one-time-code" value={totpToken} onChange={(event) => setTotpToken(event.target.value)} /></Field>
-            <div className="settings-actions"><Button variant="primary" disabled={busy || totpToken.length !== 6} onClick={() => void run(async () => { const result = await finishTotpSetup({ password, key: totpKey, token: totpToken, name: totpName }); setRecoveryCodes([result.recoveryCode]); setTotpKey(""); setTotpToken(""); }, "验证器已启用。")}>确认启用</Button></div>
-          </>}
-        </section>
-        {session.capabilities["auth.yubikey"] ? <section className="settings-card settings-grid"><h2>YubiKey OTP</h2><Field label="名称"><Input value={totpName} onChange={(event) => setTotpName(event.target.value)} /></Field><Field label="触碰 YubiKey 生成 OTP"><Input value={yubikeyOtp} onChange={(event) => setYubikeyOtp(event.target.value.trim())} /></Field><div className="settings-actions"><Button disabled={busy || !password || yubikeyOtp.length !== 44} onClick={() => void run(async () => { await addYubiKey({ password, otp: yubikeyOtp, name: totpName }); setYubikeyOtp(""); }, "YubiKey 已添加。")}>添加 YubiKey</Button></div></section> : null}
-        {session.capabilities["auth.twoFactorPasskey"] ? <section className="settings-card settings-grid"><h2>二步验证 Passkey</h2><p>使用安全密钥、平台验证器或密码管理器作为登录后的第二步验证。</p><Field label="名称"><Input value={twoFactorPasskeyName} onChange={(event) => setTwoFactorPasskeyName(event.target.value)} /></Field><div className="settings-actions"><Button icon={Plus} disabled={busy || !password || !twoFactorPasskeyName.trim()} onClick={() => void run(async () => { const result = await createTwoFactorPasskey({ password, name: twoFactorPasskeyName }); setRecoveryCodes([result.recoveryCode]); }, "二步验证 Passkey 已添加。")}>添加二步验证 Passkey</Button></div></section> : null}
-        <section className="settings-card"><h2>恢复码</h2><p>新代码只显示一次，生成后旧代码立即失效。</p>{recoveryCodes.length ? <pre className="settings-secret">{recoveryCodes.join("\n")}</pre> : null}<div className="settings-actions"><Button icon={RefreshCw} disabled={busy || !password} onClick={() => void run(async () => setRecoveryCodes((await rotateRecoveryCodes(password)).codes), "恢复码已轮换。", false)}>重新生成</Button></div></section>
-        <section className="settings-card settings-grid"><h2>账号 Passkey</h2>
-          {!session.capabilities["auth.accountPasskey"] ? <p>当前实例未启用账号 Passkey。</p> : <><div className="settings-list">{passkeys.map((passkey) => <div key={passkey.id} className="settings-row"><KeyRound size={18} aria-hidden="true" /><div><strong>{passkey.name}</strong><span>{passkey.directUnlock ? "登录 + 直接解锁" : "仅登录"}</span></div><Button size="sm" variant="danger" icon={Trash2} disabled={busy || !password} onClick={() => void run(() => deleteAccountPasskey(passkey.id, password), "Passkey 已删除。")}>删除</Button></div>)}</div><Field label="新 Passkey 名称"><Input value={passkeyName} onChange={(event) => setPasskeyName(event.target.value)} /></Field>{session.capabilities["auth.passkeyDirectUnlock"] ? <label className="settings-choice"><input type="checkbox" checked={directUnlock} onChange={(event) => setDirectUnlock(event.target.checked)} /><span><strong>启用直接解锁</strong><small>使用 WebAuthn PRF 在验证器中派生包装密钥；不支持时不会保存直接解锁机密。</small></span></label> : null}<div className="settings-actions"><Button icon={Plus} disabled={busy || !password || !passkeyName.trim()} onClick={() => void run(() => createAccountPasskey({ password, name: passkeyName, directUnlock }), directUnlock ? "直接解锁 Passkey 已添加。" : "Passkey 已添加。")}>添加 Passkey</Button></div>{session.capabilities["auth.passkeyDirectUnlock"] ? <p className="settings-note">直接解锁仅在浏览器返回可用 PRF 包装后开放；普通 Passkey 始终可安全用于登录。</p> : null}</>}
-        </section>
-      </main>
+      <Stack component="main" id="main-content" spacing={3} sx={{ minWidth: 0 }}>
+        <PageHeader title="安全凭据" description="管理二步验证、恢复码与账号 Passkey。所有变更均需要用途绑定的再次验证。" />
+        {error ? <AsyncState kind="fatal" title="安全凭据操作失败" description={error} /> : null}
+        {message ? <Alert severity="success" role="status">{message}</Alert> : null}
+        <SectionCard title="再次验证"><TextField label="当前主密码" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></SectionCard>
+
+        <SectionCard title="已配置的二步验证">
+          {credentials.length ? <List disablePadding>{credentials.map((credential) => <ListItem key={credential.id} divider sx={{ px: 0, display: "grid", gridTemplateColumns: { xs: "1fr", sm: "auto 1fr auto auto" }, gap: 1, alignItems: "center" }}><ListItemIcon sx={{ minWidth: 36 }}><SecurityOutlined color="primary" /></ListItemIcon><Box><TextField size="small" label={`${credential.name} 的名称`} value={credentialNames[credential.id] ?? credential.name} disabled={credential.id === "legacy-totp"} onChange={(event) => setCredentialNames({ ...credentialNames, [credential.id]: event.target.value })} /><Typography color="text.secondary" variant="caption">{credential.provider} · {credential.status}</Typography></Box><Button size="small" disabled={busy || !password || credential.id === "legacy-totp" || !credentialNames[credential.id]?.trim() || credentialNames[credential.id] === credential.name} onClick={() => void run(() => renameTwoFactorCredential(credential.id, credentialNames[credential.id], password), "验证方式名称已更新。")}>保存名称</Button><Button size="small" color="error" startIcon={<DeleteOutlineOutlined />} disabled={busy || !password} onClick={() => void run(() => credential.provider === "webauthn" ? deleteTwoFactorPasskey(credential.id, password) : disableTwoFactor(credential.type, password), "验证方式已禁用。")}>禁用</Button></ListItem>)}</List> : <AsyncState kind="empty" compact title="尚未配置二步验证" />}
+        </SectionCard>
+
+        <SectionCard title="验证器 (TOTP)">
+          {!totpKey ? <Button startIcon={<AddOutlined />} disabled={busy || !password} onClick={() => void run(async () => { const setup = await beginTotpSetup(password); setTotpKey(setup.key); setTotpUri(setup.uri); }, "已生成待确认密钥。", false)}>开始设置</Button> : <Stack spacing={2}><TextField label="密钥" slotProps={{ htmlInput: { readOnly: true } }} value={totpKey} /><TextField label="OTP Auth URI" slotProps={{ htmlInput: { readOnly: true } }} value={totpUri} /><TextField label="名称" value={totpName} onChange={(event) => setTotpName(event.target.value)} /><TextField label="6 位验证码" inputMode="numeric" autoComplete="one-time-code" value={totpToken} onChange={(event) => setTotpToken(event.target.value)} /><Button variant="contained" disabled={busy || totpToken.length !== 6} onClick={() => void run(async () => { const result = await finishTotpSetup({ password, key: totpKey, token: totpToken, name: totpName }); setRecoveryCodes([result.recoveryCode]); setTotpKey(""); setTotpToken(""); }, "验证器已启用。")}>确认启用</Button></Stack>}
+        </SectionCard>
+
+        {session.capabilities["auth.yubikey"] ? <SectionCard title="YubiKey OTP"><Stack spacing={2}><TextField label="名称" value={totpName} onChange={(event) => setTotpName(event.target.value)} /><TextField label="触碰 YubiKey 生成 OTP" value={yubikeyOtp} onChange={(event) => setYubikeyOtp(event.target.value.trim())} /><Button disabled={busy || !password || yubikeyOtp.length !== 44} onClick={() => void run(async () => { await addYubiKey({ password, otp: yubikeyOtp, name: totpName }); setYubikeyOtp(""); }, "YubiKey 已添加。")}>添加 YubiKey</Button></Stack></SectionCard> : null}
+
+        {session.capabilities["auth.twoFactorPasskey"] ? <SectionCard title="二步验证 Passkey" description="使用安全密钥、平台验证器或密码管理器作为登录后的第二步验证。"><Stack spacing={2}><TextField label="名称" value={twoFactorPasskeyName} onChange={(event) => setTwoFactorPasskeyName(event.target.value)} /><Button startIcon={<AddOutlined />} disabled={busy || !password || !twoFactorPasskeyName.trim()} onClick={() => void run(async () => { const result = await createTwoFactorPasskey({ password, name: twoFactorPasskeyName }); setRecoveryCodes([result.recoveryCode]); }, "二步验证 Passkey 已添加。")}>添加二步验证 Passkey</Button></Stack></SectionCard> : null}
+
+        <SectionCard title="恢复码" description="新代码只显示一次，生成后旧代码立即失效。">
+          <Stack spacing={2}>{recoveryCodes.length ? <Box component="pre" aria-label="恢复码" sx={{ m: 0, p: 2, borderRadius: 2, bgcolor: "action.hover", overflowX: "auto", userSelect: "all" }}>{recoveryCodes.join("\n")}</Box> : <Typography color="text.secondary">恢复码当前隐藏。</Typography>}<Button startIcon={<RefreshOutlined />} disabled={busy || !password} onClick={() => void run(async () => setRecoveryCodes((await rotateRecoveryCodes(password)).codes), "恢复码已轮换。", false)}>重新生成</Button></Stack>
+        </SectionCard>
+
+        <SectionCard title="账号 Passkey" action={<KeyOutlined color="primary" />}>
+          {!session.capabilities["auth.accountPasskey"] ? <AsyncState kind="forbidden" compact title="当前实例未启用账号 Passkey" /> : <Stack spacing={2}><List disablePadding>{passkeys.map((passkey) => <ListItem key={passkey.id} divider sx={{ px: 0 }}><ListItemIcon><KeyOutlined /></ListItemIcon><ListItemText primary={passkey.name} secondary={passkey.directUnlock ? "登录 + 直接解锁" : "仅登录"} /><Button size="small" color="error" disabled={busy || !password} onClick={() => void run(() => deleteAccountPasskey(passkey.id, password), "Passkey 已删除。")}>删除</Button></ListItem>)}</List><TextField label="新 Passkey 名称" value={passkeyName} onChange={(event) => setPasskeyName(event.target.value)} />{session.capabilities["auth.passkeyDirectUnlock"] ? <FormControlLabel control={<Checkbox checked={directUnlock} onChange={(event) => setDirectUnlock(event.target.checked)} />} label="启用直接解锁（使用 WebAuthn PRF 派生包装密钥）" /> : null}<Button startIcon={<AddOutlined />} disabled={busy || !password || !passkeyName.trim()} onClick={() => void run(() => createAccountPasskey({ password, name: passkeyName, directUnlock }), directUnlock ? "直接解锁 Passkey 已添加。" : "Passkey 已添加。")}>添加 Passkey</Button></Stack>}
+        </SectionCard>
+      </Stack>
     </RouteGuard>
   );
 }

@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Field, Input } from "@/components/primitives";
+import KeyOutlined from "@mui/icons-material/KeyOutlined";
+import SaveOutlined from "@mui/icons-material/SaveOutlined";
+import { Alert, Box, Button, FormControl, InputLabel, MenuItem, Select, Stack, TextField, Typography } from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
-import { SettingsNav } from "@/features/security/SettingsNav";
+import { AsyncState } from "@/components/ui/AsyncState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionCard } from "@/components/ui/SectionCard";
 import { lockController } from "@/features/auth/lock-controller";
-import {
-  changeKdf,
-  changeMasterPassword,
-  fetchAccountProfile,
-  revealApiKey,
-  updateAccountProfile,
-  type AccountProfile,
-} from "@/features/security/api";
+import { changeKdf, changeMasterPassword, fetchAccountProfile, revealApiKey, updateAccountProfile, type AccountProfile } from "@/features/security/api";
 
 export default function AccountSettingsPage() {
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -30,43 +27,68 @@ export default function AccountSettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => { void fetchAccountProfile().then((value) => { setProfile(value); setName(value.name); setHint(value.masterPasswordHint ?? ""); }).catch((reason) => setError(String(reason))); }, []);
+  useEffect(() => {
+    void fetchAccountProfile().then((value) => { setProfile(value); setName(value.name); setHint(value.masterPasswordHint ?? ""); }).catch((reason) => setError(String(reason)));
+  }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
-    setBusy(true); setError(""); setMessage("");
-    try { await action(); setMessage(success); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "操作失败。"); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await action();
+      setMessage(success);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "操作失败。");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <RouteGuard requireOnline>
-      <main className="settings-page">
-        <SettingsNav />
-        <header className="settings-header"><h1>账号设置</h1><p>{profile?.email ?? "正在加载账号…"}</p></header>
-        {error ? <p className="tool-error" role="alert">{error}</p> : null}{message ? <p className="settings-success" role="status">{message}</p> : null}
-        <section className="settings-card settings-grid"><h2>资料与密码提示</h2>
-          <Field label="显示名称"><Input value={name} onChange={(event) => setName(event.target.value)} /></Field>
-          <Field label="密码提示"><Input value={hint} onChange={(event) => setHint(event.target.value)} /></Field>
-          <Field label="当前主密码" hint="修改提示需要用途绑定的再次验证。"><Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
-          <div className="settings-actions"><Button disabled={busy || !profile || !password} variant="primary" onClick={() => void run(async () => { const updated = await updateAccountProfile({ name, hint: hint || null, password }); setProfile(updated); }, "账号资料已更新。")}>保存资料</Button></div>
-        </section>
-        <section className="settings-card settings-grid"><h2>修改主密码</h2>
-          <Field label="新主密码"><Input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></Field>
-          <Field label="确认新主密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></Field>
-          <div className="settings-actions"><Button disabled={busy || !password || newPassword.length < 8 || newPassword !== confirmPassword} variant="danger" onClick={() => void run(async () => { await changeMasterPassword({ currentPassword: password, newPassword }); await lockController.logout(); }, "主密码已修改，请重新登录。")}>修改主密码</Button></div>
-        </section>
-        <section className="settings-card settings-grid"><h2>KDF 安全参数</h2>
-          <Field label="算法"><select value={kdfType} onChange={(event) => { const value = Number(event.target.value); setKdfType(value); setKdfIterations(value === 1 ? 3 : 600000); }}><option value={1}>Argon2id</option><option value={0}>PBKDF2-SHA256</option></select></Field>
-          <Field label="迭代次数"><Input type="number" min={kdfType === 1 ? 1 : 100000} value={kdfIterations} onChange={(event) => setKdfIterations(Number(event.target.value))} /></Field>
-          {kdfType === 1 ? <><Field label="内存 (MiB)"><Input type="number" min={16} max={1024} value={kdfMemory} onChange={(event) => setKdfMemory(Number(event.target.value))} /></Field><Field label="并行度"><Input type="number" min={1} max={16} value={kdfParallelism} onChange={(event) => setKdfParallelism(Number(event.target.value))} /></Field></> : null}
-          <div className="settings-actions"><Button disabled={busy || !password} onClick={() => void run(async () => { await changeKdf({ password, type: kdfType, iterations: kdfIterations, memory: kdfType === 1 ? kdfMemory : null, parallelism: kdfType === 1 ? kdfParallelism : null }); await lockController.logout(); }, "KDF 已更新，请重新登录。")}>更新 KDF</Button></div>
-        </section>
-        <section className="settings-card settings-grid"><h2>账号 API key</h2><p>仅在再次验证后显示。轮换后旧 key 立即失效。</p>
-          {apiKey ? <code className="settings-secret">{apiKey}</code> : null}
-          <div className="settings-actions"><Button disabled={busy || !password} onClick={() => void run(async () => setApiKey((await revealApiKey(password)).apiKey), "API key 已显示。")}>显示</Button><Button disabled={busy || !password} variant="danger" onClick={() => void run(async () => setApiKey((await revealApiKey(password, true)).apiKey), "API key 已轮换。")}>轮换</Button></div>
-        </section>
-      </main>
+      <Stack component="main" id="main-content" spacing={3} sx={{ minWidth: 0 }}>
+        <PageHeader title="账号设置" description={profile?.email ?? "正在加载账号…"} />
+        {error ? <AsyncState kind="fatal" title="账号操作失败" description={error} /> : null}
+        {message ? <Alert severity="success" role="status">{message}</Alert> : null}
+        {!profile && !error ? <AsyncState kind="loading" description="正在加载账号资料。" /> : null}
+
+        <SectionCard title="资料与密码提示" description="修改资料需要用途绑定的主密码验证。">
+          <Stack spacing={2.25}>
+            <TextField label="显示名称" value={name} onChange={(event) => setName(event.target.value)} />
+            <TextField label="密码提示" value={hint} onChange={(event) => setHint(event.target.value)} />
+            <TextField label="当前主密码" helperText="只用于本次敏感操作。" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <Button startIcon={<SaveOutlined />} disabled={busy || !profile || !password} variant="contained" onClick={() => void run(async () => { const updated = await updateAccountProfile({ name, hint: hint || null, password }); setProfile(updated); }, "账号资料已更新。")}>保存资料</Button>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard title="修改主密码" description="修改后会退出当前会话，需使用新主密码重新登录。" danger>
+          <Stack spacing={2.25}>
+            <TextField label="新主密码" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+            <TextField label="确认新主密码" type="password" autoComplete="new-password" error={Boolean(confirmPassword && newPassword !== confirmPassword)} helperText={confirmPassword && newPassword !== confirmPassword ? "两次输入不一致。" : "至少 8 个字符。"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+            <Button color="error" variant="contained" disabled={busy || !password || newPassword.length < 8 || newPassword !== confirmPassword} onClick={() => void run(async () => { await changeMasterPassword({ currentPassword: password, newPassword }); await lockController.logout(); }, "主密码已修改，请重新登录。")}>修改主密码</Button>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard title="KDF 安全参数" description="更强参数会增加解锁耗时；更新后需重新登录。">
+          <Stack spacing={2.25}>
+            <FormControl><InputLabel id="kdf-type-label">算法</InputLabel><Select labelId="kdf-type-label" label="算法" value={kdfType} onChange={(event) => { const value = Number(event.target.value); setKdfType(value); setKdfIterations(value === 1 ? 3 : 600000); }}><MenuItem value={1}>Argon2id</MenuItem><MenuItem value={0}>PBKDF2-SHA256</MenuItem></Select></FormControl>
+            <TextField label="迭代次数" type="number" slotProps={{ htmlInput: { min: kdfType === 1 ? 1 : 100000 } }} value={kdfIterations} onChange={(event) => setKdfIterations(Number(event.target.value))} />
+            {kdfType === 1 ? <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}><TextField label="内存 (MiB)" type="number" slotProps={{ htmlInput: { min: 16, max: 1024 } }} value={kdfMemory} onChange={(event) => setKdfMemory(Number(event.target.value))} /><TextField label="并行度" type="number" slotProps={{ htmlInput: { min: 1, max: 16 } }} value={kdfParallelism} onChange={(event) => setKdfParallelism(Number(event.target.value))} /></Box> : null}
+            <Button disabled={busy || !password} onClick={() => void run(async () => { await changeKdf({ password, type: kdfType, iterations: kdfIterations, memory: kdfType === 1 ? kdfMemory : null, parallelism: kdfType === 1 ? kdfParallelism : null }); await lockController.logout(); }, "KDF 已更新，请重新登录。")}>更新 KDF</Button>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard title="账号 API key" description="仅在再次验证后显示；轮换后旧 key 立即失效。" action={<KeyOutlined color="primary" />}>
+          <Stack spacing={2}>
+            {apiKey ? <Box component="code" aria-label="账号 API key" sx={{ p: 2, borderRadius: 2, bgcolor: "action.hover", overflowWrap: "anywhere", userSelect: "all", fontFamily: "monospace" }}>{apiKey}</Box> : <Typography color="text.secondary">API key 当前隐藏。</Typography>}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <Button disabled={busy || !password} onClick={() => void run(async () => setApiKey((await revealApiKey(password)).apiKey), "API key 已显示。")}>显示</Button>
+              <Button disabled={busy || !password} color="error" onClick={() => void run(async () => setApiKey((await revealApiKey(password, true)).apiKey), "API key 已轮换。")}>轮换</Button>
+            </Stack>
+          </Stack>
+        </SectionCard>
+      </Stack>
     </RouteGuard>
   );
 }

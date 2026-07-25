@@ -36,7 +36,22 @@ export default function TotpPage() {
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let active = true;
+    void fetchVaultSnapshot()
+      .then((snapshot) => {
+        if (!active) return;
+        setVaultItems(snapshot.items);
+        setError(null);
+      })
+      .catch((nextError) => {
+        if (active) setError(nextError instanceof Error ? nextError.message : "无法加载验证码。");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
