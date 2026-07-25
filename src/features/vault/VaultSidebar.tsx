@@ -3,37 +3,38 @@
 import type { ElementType } from "react";
 import {
   ArchiveOutlined,
+  AutoAwesomeOutlined,
+  BadgeOutlined,
   ContentCopyOutlined,
   CreditCardOutlined,
   DeleteOutlineOutlined,
   DescriptionOutlined,
   DriveFileRenameOutlineOutlined,
+  FavoriteBorderOutlined,
   FolderOutlined,
   FolderSpecialOutlined,
-  FavoriteBorderOutlined,
-  BadgeOutlined,
+  HealthAndSafetyOutlined,
+  ImportExportOutlined,
   KeyOutlined,
   AccountBalanceOutlined,
   ListAltOutlined,
   NoteAltOutlined,
-  AutoAwesomeOutlined,
-  TimerOutlined,
-  HealthAndSafetyOutlined,
   SendOutlined,
-  ImportExportOutlined,
+  TimerOutlined,
 } from "@mui/icons-material";
 import {
   Box,
-  Button,
-  Chip,
-  Divider,
+  IconButton,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { AppLink } from "@/components/theme/AppLink";
 import type { VaultFilter, VaultFolderView } from "@/features/vault/store";
 
@@ -65,6 +66,24 @@ function isActive(current: VaultFilter, candidate: VaultFilter) {
   return true;
 }
 
+const itemSx = {
+  minHeight: 48,
+  mx: 1.5,
+  my: 0.25,
+  px: 1.5,
+  borderRadius: 6,
+  "&.Mui-selected": {
+    bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12),
+    color: "primary.main",
+    "&:hover": { bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.27 : 0.16) },
+    "& .MuiListItemIcon-root": { color: "primary.main" },
+  },
+} as const;
+
+function Count({ value }: { value: number }) {
+  return <Typography component="span" variant="caption" color="text.secondary" sx={{ minWidth: 28, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</Typography>;
+}
+
 function ViewButton({ icon: Icon, label, count, active, onClick }: {
   icon: ElementType;
   label: string;
@@ -73,25 +92,32 @@ function ViewButton({ icon: Icon, label, count, active, onClick }: {
   onClick(): void;
 }) {
   return (
-    <ListItemButton selected={active} aria-current={active ? "page" : undefined} onClick={onClick} sx={{ borderRadius: 1, mx: 1 }}>
-      <ListItemIcon sx={{ minWidth: 36 }}><Icon fontSize="small" /></ListItemIcon>
-      <ListItemText primary={label} />
-      <Chip component="span" label={count} size="small" variant={active ? "filled" : "outlined"} />
+    <ListItemButton selected={active} aria-current={active ? "page" : undefined} onClick={onClick} sx={itemSx}>
+      <ListItemIcon sx={{ minWidth: 40 }}><Icon fontSize="small" /></ListItemIcon>
+      <ListItemText primary={label} slotProps={{ primary: { variant: "body2", sx: { fontWeight: active ? 700 : 550 } } }} />
+      <Count value={count} />
     </ListItemButton>
   );
 }
 
 function ToolLink({ href, icon: Icon, children }: { href: string; icon: ElementType; children: string }) {
   return (
-    <ListItemButton component={AppLink} href={href} sx={{ borderRadius: 1, mx: 1 }}>
-      <ListItemIcon sx={{ minWidth: 36 }}><Icon fontSize="small" /></ListItemIcon>
-      <ListItemText primary={children} />
+    <ListItemButton component={AppLink} href={href} sx={itemSx}>
+      <ListItemIcon sx={{ minWidth: 40 }}><Icon fontSize="small" /></ListItemIcon>
+      <ListItemText primary={children} slotProps={{ primary: { variant: "body2", sx: { fontWeight: 550 } } }} />
     </ListItemButton>
   );
 }
 
-function GroupTitle({ children }: { children: string }) {
-  return <Typography component="h2" variant="overline" color="text.secondary" sx={{ px: 2, pt: 1.5, display: "block" }}>{children}</Typography>;
+function SectionHeader({ children, action }: { children: string; action?: React.ReactNode }) {
+  return (
+    <ListSubheader disableSticky component="div" sx={{ bgcolor: "transparent", lineHeight: 1, px: 3, pt: 2.5, pb: 1 }}>
+      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 750, letterSpacing: 0.9 }}>{children}</Typography>
+        {action}
+      </Stack>
+    </ListSubheader>
+  );
 }
 
 export function VaultSidebar({ filter, counts, folders, onFilterChange, onManageFolders }: {
@@ -110,38 +136,40 @@ export function VaultSidebar({ filter, counts, folders, onFilterChange, onManage
   ];
 
   return (
-    <Box component="nav" aria-label="密码库视图" sx={{ height: "100%", overflow: "auto", pb: 2 }}>
-      <GroupTitle>密码库</GroupTitle>
-      <List dense disablePadding>{viewRows.map((row) => (
-        <ViewButton key={row.label} icon={row.icon} label={row.label} count={row.count} active={isActive(filter, row.filter)} onClick={() => onFilterChange(row.filter)} />
-      ))}</List>
-      <Divider sx={{ my: 1 }} />
+    <Box component="nav" aria-label="密码库视图" sx={{ height: "100%", overflow: "auto", pb: 3 }}>
+      <Box sx={{ px: 3, pt: 3, pb: 1.5 }}>
+        <Typography component="p" variant="subtitle1" sx={{ fontWeight: 750 }}>工作区</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>浏览、整理和保护你的项目</Typography>
+      </Box>
 
-      <GroupTitle>安全工具</GroupTitle>
-      <List dense disablePadding>
+      <List disablePadding subheader={<SectionHeader>密码库</SectionHeader>}>
+        {viewRows.map((row) => <ViewButton key={row.label} icon={row.icon} label={row.label} count={row.count} active={isActive(filter, row.filter)} onClick={() => onFilterChange(row.filter)} />)}
+      </List>
+
+      <List disablePadding subheader={<SectionHeader>安全工具</SectionHeader>}>
         <ToolLink href="/generator" icon={AutoAwesomeOutlined}>密码生成器</ToolLink>
         <ToolLink href="/vault/totp" icon={TimerOutlined}>验证码</ToolLink>
         <ToolLink href="/security/password-health" icon={HealthAndSafetyOutlined}>密码健康</ToolLink>
         <ToolLink href="/sends" icon={SendOutlined}>Send</ToolLink>
         <ToolLink href="/backup/import-export" icon={ImportExportOutlined}>导入与导出</ToolLink>
       </List>
-      <Divider sx={{ my: 1 }} />
 
-      <GroupTitle>类型</GroupTitle>
-      <List dense disablePadding>{typeRows.map((row) => (
-        <ViewButton key={row.type} icon={row.icon} label={row.label} count={counts.types[row.type] ?? 0} active={filter.kind === "type" && filter.type === row.type} onClick={() => onFilterChange({ kind: "type", type: row.type })} />
-      ))}</List>
-      <Divider sx={{ my: 1 }} />
+      <List disablePadding subheader={<SectionHeader>类型</SectionHeader>}>
+        {typeRows.map((row) => <ViewButton key={row.type} icon={row.icon} label={row.label} count={counts.types[row.type] ?? 0} active={filter.kind === "type" && filter.type === row.type} onClick={() => onFilterChange({ kind: "type", type: row.type })} />)}
+      </List>
 
-      <Stack direction="row" sx={{ px: 2, pt: 1, alignItems: "center", justifyContent: "space-between" }}>
-        <GroupTitle>文件夹</GroupTitle>
-        <Button size="small" variant="text" startIcon={<FolderSpecialOutlined />} onClick={onManageFolders}>管理</Button>
-      </Stack>
-      {folders.length === 0 ? <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>暂无文件夹</Typography> : (
-        <List dense disablePadding>{folders.map((folder) => (
+      <List
+        disablePadding
+        subheader={(
+          <SectionHeader action={<Tooltip title="管理文件夹"><IconButton size="small" aria-label="管理文件夹" onClick={onManageFolders}><FolderSpecialOutlined fontSize="small" /></IconButton></Tooltip>}>
+            文件夹
+          </SectionHeader>
+        )}
+      >
+        {folders.length === 0 ? <Typography color="text.secondary" variant="body2" sx={{ px: 3, py: 1 }}>暂无文件夹</Typography> : folders.map((folder) => (
           <ViewButton key={folder.id} icon={FolderOutlined} label={folder.name} count={counts.folders[folder.id] ?? 0} active={filter.kind === "folder" && filter.folderId === folder.id} onClick={() => onFilterChange({ kind: "folder", folderId: folder.id })} />
-        ))}</List>
-      )}
+        ))}
+      </List>
     </Box>
   );
 }

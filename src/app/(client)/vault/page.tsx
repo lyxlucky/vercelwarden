@@ -1,24 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import {
+  AddOutlined,
+  AdminPanelSettingsOutlined,
   ArchiveOutlined,
   CheckBoxOutlined,
+  DeleteOutlineOutlined,
   FavoriteBorderOutlined,
   FolderOpenOutlined,
   LockOutlined,
   LogoutOutlined,
   MenuOutlined,
-  AddOutlined,
+  MoreVertOutlined,
   RefreshOutlined,
   RestoreOutlined,
   SearchOutlined,
+  SecurityOutlined,
   SettingsOutlined,
-  AdminPanelSettingsOutlined,
-  DeleteOutlineOutlined,
 } from "@mui/icons-material";
 import {
-  Avatar,
   Box,
   Button,
   Chip,
@@ -26,6 +27,9 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  ListItemIcon,
+  ListItemText,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -34,25 +38,74 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { AppShell, type MobilePane } from "@/components/shell/AppShell";
 import { RouteGuard } from "@/components/shell/RouteGuard";
 import { AppLink } from "@/components/theme/AppLink";
-import { useToast } from "@/components/ui/ToastProvider";
 import { TaskState } from "@/components/feedback/TaskState";
-import { useSession } from "@/lib/client/state/session-store";
+import { useToast } from "@/components/ui/ToastProvider";
 import { lockController } from "@/features/auth/lock-controller";
-import { archiveCiphers, createFolder, deleteFolder, favoriteCiphers, fetchVaultSnapshot, moveCiphers, permanentlyDeleteCiphers, renameFolder, restoreCiphers, trashCiphers, unarchiveCiphers, type BulkMutationResult } from "@/features/vault/api";
-import { buildVaultCounts, selectVaultItems, useVaultSnapshot, vaultStore, type DuplicateDetectionMode, type VaultFilter, type VaultItemView, type VaultSort } from "@/features/vault/store";
-import { VaultSidebar } from "@/features/vault/VaultSidebar";
-import { VaultList } from "@/features/vault/VaultList";
+import {
+  archiveCiphers,
+  createFolder,
+  deleteFolder,
+  favoriteCiphers,
+  fetchVaultSnapshot,
+  moveCiphers,
+  permanentlyDeleteCiphers,
+  renameFolder,
+  restoreCiphers,
+  trashCiphers,
+  unarchiveCiphers,
+  type BulkMutationResult,
+} from "@/features/vault/api";
 import { VaultDetail } from "@/features/vault/VaultDetail";
-import { VaultEditor } from "@/features/vault/VaultEditor";
 import { ConfirmItemsDialog, ConflictDialog, FolderManagerDialog, MoveItemsDialog } from "@/features/vault/VaultDialogs";
+import { VaultEditor } from "@/features/vault/VaultEditor";
+import { VaultList } from "@/features/vault/VaultList";
+import { VaultSidebar } from "@/features/vault/VaultSidebar";
+import {
+  buildVaultCounts,
+  selectVaultItems,
+  useVaultSnapshot,
+  vaultStore,
+  type DuplicateDetectionMode,
+  type VaultFilter,
+  type VaultItemView,
+  type VaultSort,
+} from "@/features/vault/store";
+import { useSession } from "@/lib/client/state/session-store";
 
 type ConfirmMode = "archive" | "unarchive" | "restore" | "trash" | "permanent" | null;
 const VAULT_SORT_STORAGE_KEY = "vercelwarden.vault.sort";
-function storedSort(): VaultSort { if (typeof window === "undefined") return "name"; const value = window.localStorage.getItem(VAULT_SORT_STORAGE_KEY); return value === "created-desc" || value === "updated-desc" ? value : "name"; }
-function filterTitle(filter: VaultFilter, folderName?: string) { if (filter.kind === "favorites") return "收藏"; if (filter.kind === "archive") return "归档"; if (filter.kind === "trash") return "回收站"; if (filter.kind === "duplicates") return "重复项"; if (filter.kind === "folder") return folderName ?? "文件夹"; if (filter.kind === "type") return "类型项目"; return "所有项目"; }
+
+function storedSort(): VaultSort {
+  if (typeof window === "undefined") return "name";
+  const value = window.localStorage.getItem(VAULT_SORT_STORAGE_KEY);
+  return value === "created-desc" || value === "updated-desc" ? value : "name";
+}
+
+function filterTitle(filter: VaultFilter, folderName?: string) {
+  if (filter.kind === "favorites") return "收藏";
+  if (filter.kind === "archive") return "归档";
+  if (filter.kind === "trash") return "回收站";
+  if (filter.kind === "duplicates") return "重复项";
+  if (filter.kind === "folder") return folderName ?? "文件夹";
+  if (filter.kind === "type") return "类型项目";
+  return "所有项目";
+}
+
+function TopBarAction({ label, icon, action, href, mobileHidden = false }: { label: string; icon: ReactNode; action?: () => void; href?: string; mobileHidden?: boolean }) {
+  return (
+    <Tooltip title={label}>
+      {href ? (
+        <IconButton component={AppLink} href={href} aria-label={label} sx={{ display: mobileHidden ? { xs: "none", sm: "inline-flex" } : undefined }}>{icon}</IconButton>
+      ) : (
+        <IconButton aria-label={label} onClick={action} sx={{ display: mobileHidden ? { xs: "none", sm: "inline-flex" } : undefined }}>{icon}</IconButton>
+      )}
+    </Tooltip>
+  );
+}
 
 export default function VaultPage() {
   const session = useSession();
@@ -69,7 +122,18 @@ export default function VaultPage() {
   const [confirmMode, setConfirmMode] = useState<ConfirmMode>(null);
   const [conflictDialog, setConflictDialog] = useState(false);
   const [editorTarget, setEditorTarget] = useState<"new" | VaultItemView | null>(null);
-  const refresh = useCallback(async () => { vaultStore.setLoading(); try { const snapshot = await fetchVaultSnapshot(); vaultStore.replace(snapshot.items, snapshot.folders); } catch (error) { vaultStore.setError(error instanceof Error ? error.message : "密码库加载失败。"); } }, []);
+  const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
+
+  const refresh = useCallback(async () => {
+    vaultStore.setLoading();
+    try {
+      const snapshot = await fetchVaultSnapshot();
+      vaultStore.replace(snapshot.items, snapshot.folders);
+    } catch (error) {
+      vaultStore.setError(error instanceof Error ? error.message : "密码库加载失败。");
+    }
+  }, []);
+
   useEffect(() => { if (session.phase === "unlocked" && vault.status === "idle") void refresh(); }, [refresh, session.phase, vault.status]);
   useEffect(() => { window.localStorage.setItem(VAULT_SORT_STORAGE_KEY, sort); }, [sort]);
 
@@ -77,36 +141,117 @@ export default function VaultPage() {
   const visibleItems = useMemo(() => selectVaultItems(vault.items, { query, filter, sort }), [filter, query, sort, vault.items]);
   const selectedItem = useMemo(() => vault.items.find((item) => item.id === selectedId) ?? null, [selectedId, vault.items]);
   const checkedItems = useMemo(() => vault.items.filter((item) => checkedIds.has(item.id)), [checkedIds, vault.items]);
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((item) => checkedIds.has(item.id));
   const title = filterTitle(filter, filter.kind === "folder" ? vault.folders.find((folder) => folder.id === filter.folderId)?.name : undefined);
-  const selectItem = (item: VaultItemView) => { setSelectedId(item.id); setMobilePane("detail"); const url = new URL(window.location.href); url.searchParams.set("item", item.id); window.history.replaceState(null, "", url); };
-  const changeFilter = (next: VaultFilter) => { setFilter(next); setCheckedIds(new Set()); setSelectedId(null); setMobilePane("list"); };
-  const handleBulkResult = (result: BulkMutationResult) => { const conflicts = result.outcomes.filter((outcome) => outcome.status === "conflict"); if (conflicts.length > 0) setConflictDialog(true); toast.push({ title: result.failed ? "操作部分完成" : "操作完成", description: `成功 ${result.succeeded} 项${result.failed ? `，未处理 ${result.failed} 项` : ""}`, tone: result.failed ? "warning" : "success" }); setCheckedIds(new Set(result.outcomes.filter((outcome) => outcome.status !== "succeeded").map((outcome) => outcome.id))); };
-  const runBulk = async (operation: (items: readonly VaultItemView[]) => Promise<BulkMutationResult>) => { if (checkedItems.length === 0) return; try { handleBulkResult(await operation(checkedItems)); } catch (error) { toast.push({ title: "操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" }); } };
-  const folderMutation = async (operation: () => Promise<unknown>, success: string) => { try { await operation(); toast.push({ title: success, tone: "success" }); await refresh(); } catch (error) { toast.push({ title: "文件夹操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" }); throw error; } };
-  const listPanel = vault.status === "loading" || vault.status === "idle" ? <TaskState kind="loading" compact /> : vault.status === "error" ? <TaskState kind="fatal" title="无法加载密码库" description={vault.error ?? undefined} actionLabel="重试" onAction={() => void refresh()} /> : <VaultList items={visibleItems} selectedId={selectedId} checkedIds={checkedIds} onSelect={selectItem} onToggle={(id) => setCheckedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} />;
 
-  const headerAction = (label: string, icon: React.ReactNode, action?: () => void, href?: string) => (
-    <Tooltip title={label}>{href ? <IconButton component={AppLink} href={href} aria-label={label}>{icon}</IconButton> : <IconButton aria-label={label} onClick={action}>{icon}</IconButton>}</Tooltip>
-  );
+  const updateItemUrl = (id: string | null) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("item", id); else url.searchParams.delete("item");
+    window.history.replaceState(null, "", url);
+  };
+  const selectItem = (item: VaultItemView) => { setSelectedId(item.id); setMobilePane("detail"); updateItemUrl(item.id); };
+  const changeFilter = (next: VaultFilter) => { setFilter(next); setCheckedIds(new Set()); setSelectedId(null); setMobilePane("list"); updateItemUrl(null); };
+  const handleBulkResult = (result: BulkMutationResult) => {
+    const conflicts = result.outcomes.filter((outcome) => outcome.status === "conflict");
+    if (conflicts.length > 0) setConflictDialog(true);
+    toast.push({ title: result.failed ? "操作部分完成" : "操作完成", description: `成功 ${result.succeeded} 项${result.failed ? `，未处理 ${result.failed} 项` : ""}`, tone: result.failed ? "warning" : "success" });
+    setCheckedIds(new Set(result.outcomes.filter((outcome) => outcome.status !== "succeeded").map((outcome) => outcome.id)));
+  };
+  const runBulk = async (operation: (items: readonly VaultItemView[]) => Promise<BulkMutationResult>) => {
+    if (checkedItems.length === 0) return;
+    try { handleBulkResult(await operation(checkedItems)); }
+    catch (error) { toast.push({ title: "操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" }); }
+  };
+  const folderMutation = async (operation: () => Promise<unknown>, success: string) => {
+    try { await operation(); toast.push({ title: success, tone: "success" }); await refresh(); }
+    catch (error) { toast.push({ title: "文件夹操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" }); throw error; }
+  };
+
+  const listPanel = vault.status === "loading" || vault.status === "idle"
+    ? <TaskState kind="loading" compact />
+    : vault.status === "error"
+      ? <TaskState kind="fatal" title="无法加载密码库" description={vault.error ?? undefined} actionLabel="重试" onAction={() => void refresh()} />
+      : <VaultList items={visibleItems} selectedId={selectedId} checkedIds={checkedIds} onSelect={selectItem} onToggle={(id) => setCheckedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} />;
+
+  const openMore = (event: MouseEvent<HTMLElement>) => setMoreAnchor(event.currentTarget);
+  const closeMore = () => setMoreAnchor(null);
+  const moreAction = (action: () => void) => { closeMore(); action(); };
 
   return (
     <RouteGuard>
       <AppShell
         mobilePane={mobilePane}
         onMobileBack={() => setMobilePane(mobilePane === "detail" ? "list" : mobilePane === "list" ? "navigation" : "list")}
-        header={<Stack direction="row" sx={{ width: "100%", alignItems: "center", justifyContent: "space-between", gap: 1 }}><Stack direction="row" sx={{ alignItems: "center", minWidth: 0, gap: 1 }}><Tooltip title="打开密码库视图"><IconButton aria-label="打开密码库视图" onClick={() => setMobilePane("navigation")} sx={{ display: { md: "none" } }}><MenuOutlined /></IconButton></Tooltip><Avatar variant="rounded" sx={{ width: 32, height: 32, bgcolor: "primary.main", fontWeight: 700 }}>V</Avatar><Typography sx={{ fontWeight: 700, display: { xs: "none", sm: "block" } }}>Vercelwarden</Typography></Stack><Stack direction="row" sx={{ alignItems: "center", gap: 0.25 }}><Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 220, display: { xs: "none", lg: "block" }, mr: 1 }}>{session.user?.email}</Typography>{session.user?.roles.includes("admin") ? headerAction("管理控制台", <AdminPanelSettingsOutlined />, undefined, "/admin") : null}{headerAction("设置", <SettingsOutlined />, undefined, "/settings")}{headerAction("刷新密码库", <RefreshOutlined />, () => void refresh())}{headerAction("锁定", <LockOutlined />, () => lockController.lock())}{headerAction("退出", <LogoutOutlined />, () => void lockController.logout())}</Stack></Stack>}
+        header={(
+          <Stack direction="row" sx={{ width: "100%", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+            <Stack direction="row" sx={{ alignItems: "center", minWidth: 0, gap: 1.25 }}>
+              <Tooltip title="打开密码库视图"><IconButton aria-label="打开密码库视图" onClick={() => setMobilePane("navigation")} sx={{ display: { md: "none" } }}><MenuOutlined /></IconButton></Tooltip>
+              <Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 2.5, bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12), color: "primary.main" }}><SecurityOutlined /></Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 800, lineHeight: 1.1, letterSpacing: -0.2 }}>VercelWarden</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>个人密码库</Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" sx={{ alignItems: "center", gap: 0.25 }}>
+              {session.readOnly ? <Chip size="small" color="warning" variant="outlined" label="只读" sx={{ mr: 0.5 }} /> : null}
+              <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 220, display: { xs: "none", lg: "block" }, mr: 1 }}>{session.user?.email}</Typography>
+              {session.user?.roles.includes("admin") ? <TopBarAction label="管理控制台" icon={<AdminPanelSettingsOutlined />} href="/admin" mobileHidden /> : null}
+              <TopBarAction label="设置" icon={<SettingsOutlined />} href="/settings" mobileHidden />
+              <TopBarAction label="刷新密码库" icon={<RefreshOutlined />} action={() => void refresh()} mobileHidden />
+              <TopBarAction label="锁定" icon={<LockOutlined />} action={() => lockController.lock()} />
+              <Tooltip title="更多"><IconButton aria-label="更多操作" onClick={openMore} sx={{ display: { sm: "none" } }}><MoreVertOutlined /></IconButton></Tooltip>
+              <TopBarAction label="退出" icon={<LogoutOutlined />} action={() => void lockController.logout()} mobileHidden />
+              <Menu anchorEl={moreAnchor} open={Boolean(moreAnchor)} onClose={closeMore}>
+                {session.user?.roles.includes("admin") ? <MenuItem component={AppLink} href="/admin" onClick={closeMore}><ListItemIcon><AdminPanelSettingsOutlined fontSize="small" /></ListItemIcon><ListItemText>管理控制台</ListItemText></MenuItem> : null}
+                <MenuItem component={AppLink} href="/settings" onClick={closeMore}><ListItemIcon><SettingsOutlined fontSize="small" /></ListItemIcon><ListItemText>设置</ListItemText></MenuItem>
+                <MenuItem onClick={() => moreAction(() => void refresh())}><ListItemIcon><RefreshOutlined fontSize="small" /></ListItemIcon><ListItemText>刷新密码库</ListItemText></MenuItem>
+                <MenuItem onClick={() => moreAction(() => void lockController.logout())}><ListItemIcon><LogoutOutlined fontSize="small" /></ListItemIcon><ListItemText>退出</ListItemText></MenuItem>
+              </Menu>
+            </Stack>
+          </Stack>
+        )}
         navigation={<VaultSidebar filter={filter} counts={counts} folders={vault.folders} onFilterChange={changeFilter} onManageFolders={() => setFolderDialog(true)} />}
-        list={<Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-          <Box sx={{ p: 2, pb: 1.5 }}><Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}><Box><Typography component="h2" variant="h6">{title}</Typography><Typography variant="body2" color="text.secondary">{visibleItems.length} 项</Typography></Box><Stack direction="row" sx={{ gap: 0.5 }}><Button size="small" startIcon={<AddOutlined />} variant="contained" onClick={() => setEditorTarget("new")}>新建</Button><Button size="small" startIcon={<CheckBoxOutlined />} onClick={() => setCheckedIds(new Set(visibleItems.map((item) => item.id)))}>全选</Button></Stack></Stack></Box>
-          <Stack direction={{ xs: "column", sm: "row" }} sx={{ px: 2, pb: 1.5, gap: 1 }}><TextField label="搜索密码库" placeholder="搜索名称、账号、网站或字段" value={query} onChange={(event) => setQuery(event.target.value)} slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchOutlined /></InputAdornment> } }} /><FormControl sx={{ minWidth: 128 }}><InputLabel id="vault-sort-label">项目排序</InputLabel><Select labelId="vault-sort-label" label="项目排序" value={sort} onChange={(event) => setSort(event.target.value as VaultSort)}><MenuItem value="name">名称</MenuItem><MenuItem value="created-desc">最新创建</MenuItem><MenuItem value="updated-desc">最近修改</MenuItem></Select></FormControl></Stack>
-          {filter.kind === "duplicates" ? <Box sx={{ px: 2, pb: 1.5 }}><FormControl><InputLabel id="duplicate-mode-label">匹配方式</InputLabel><Select labelId="duplicate-mode-label" label="匹配方式" value={filter.mode} onChange={(event) => setFilter({ ...filter, mode: event.target.value as DuplicateDetectionMode })}><MenuItem value="exact">完全相同</MenuItem><MenuItem value="login-site">站点 + 凭据</MenuItem><MenuItem value="login-credentials">登录凭据</MenuItem><MenuItem value="password">重复密码</MenuItem></Select></FormControl></Box> : null}
-          {checkedItems.length > 0 ? <Paper square elevation={2} aria-label="批量操作" sx={{ px: 1.5, py: 1, display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap", position: "sticky", top: 0, zIndex: 1 }}><Chip color="primary" label={`已选 ${checkedItems.length}`} onDelete={() => setCheckedIds(new Set())} /><Button size="small" startIcon={<FavoriteBorderOutlined />} onClick={() => void runBulk((items) => favoriteCiphers(items, true))}>收藏</Button><Button size="small" startIcon={<FolderOpenOutlined />} onClick={() => setMoveDialog(true)}>移动</Button>{filter.kind === "archive" ? <Button size="small" startIcon={<RestoreOutlined />} onClick={() => setConfirmMode("unarchive")}>取消归档</Button> : filter.kind !== "trash" ? <Button size="small" startIcon={<ArchiveOutlined />} onClick={() => setConfirmMode("archive")}>归档</Button> : null}{filter.kind === "trash" ? <><Button size="small" startIcon={<RestoreOutlined />} onClick={() => setConfirmMode("restore")}>恢复</Button><Button size="small" startIcon={<DeleteOutlineOutlined />} color="error" onClick={() => setConfirmMode("permanent")}>永久删除</Button></> : <Button size="small" startIcon={<DeleteOutlineOutlined />} color="error" onClick={() => setConfirmMode("trash")}>移入回收站</Button>}</Paper> : null}
-          <Box sx={{ minHeight: 0, flex: 1, display: "flex" }}>{listPanel}</Box>
-        </Box>}
+        list={(
+          <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+            <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
+              <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 750 }}>当前视图</Typography>
+                  <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Typography component="h2" variant="h6">{title}</Typography>
+                    <Chip size="small" label={`${visibleItems.length} 项`} variant="outlined" />
+                  </Stack>
+                </Box>
+                <Stack direction="row" sx={{ gap: 0.5, flex: "0 0 auto" }}>
+                  <Tooltip title={allVisibleSelected ? "清除选择" : "全选"}><span><IconButton aria-label={allVisibleSelected ? "清除选择" : "全选"} disabled={visibleItems.length === 0} onClick={() => setCheckedIds(allVisibleSelected ? new Set() : new Set(visibleItems.map((item) => item.id)))}><CheckBoxOutlined /></IconButton></span></Tooltip>
+                  <Button startIcon={<AddOutlined />} variant="contained" onClick={() => setEditorTarget("new")}>新建</Button>
+                </Stack>
+              </Stack>
+            </Box>
+
+            <Stack direction="row" sx={{ px: 2, pb: 2, gap: 1, alignItems: "flex-start" }}>
+              <TextField size="small" label="搜索密码库" placeholder="名称、账号、网站或字段" value={query} onChange={(event) => setQuery(event.target.value)} slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchOutlined /></InputAdornment> } }} />
+              <FormControl size="small" sx={{ width: 138, flex: "0 0 138px" }}><InputLabel id="vault-sort-label">项目排序</InputLabel><Select labelId="vault-sort-label" label="项目排序" value={sort} onChange={(event) => setSort(event.target.value as VaultSort)}><MenuItem value="name">名称</MenuItem><MenuItem value="created-desc">最新创建</MenuItem><MenuItem value="updated-desc">最近修改</MenuItem></Select></FormControl>
+            </Stack>
+
+            {filter.kind === "duplicates" ? <Box sx={{ px: 2, pb: 2 }}><FormControl size="small"><InputLabel id="duplicate-mode-label">匹配方式</InputLabel><Select labelId="duplicate-mode-label" label="匹配方式" value={filter.mode} onChange={(event) => setFilter({ ...filter, mode: event.target.value as DuplicateDetectionMode })}><MenuItem value="exact">完全相同</MenuItem><MenuItem value="login-site">站点 + 凭据</MenuItem><MenuItem value="login-credentials">登录凭据</MenuItem><MenuItem value="password">重复密码</MenuItem></Select></FormControl></Box> : null}
+
+            {checkedItems.length > 0 ? (
+              <Paper elevation={0} aria-label="批量操作" sx={{ mx: 1.5, mb: 1, px: 1.25, py: 1, display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap", borderRadius: 3, bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.18 : 0.09), border: 1, borderColor: (theme) => alpha(theme.palette.primary.main, 0.2) }}>
+                <Chip color="primary" label={`已选 ${checkedItems.length}`} onDelete={() => setCheckedIds(new Set())} />
+                <Button size="small" startIcon={<FavoriteBorderOutlined />} onClick={() => void runBulk((items) => favoriteCiphers(items, true))}>收藏</Button>
+                <Button size="small" startIcon={<FolderOpenOutlined />} onClick={() => setMoveDialog(true)}>移动</Button>
+                {filter.kind === "archive" ? <Button size="small" startIcon={<RestoreOutlined />} onClick={() => setConfirmMode("unarchive")}>取消归档</Button> : filter.kind !== "trash" ? <Button size="small" startIcon={<ArchiveOutlined />} onClick={() => setConfirmMode("archive")}>归档</Button> : null}
+                {filter.kind === "trash" ? <><Button size="small" startIcon={<RestoreOutlined />} onClick={() => setConfirmMode("restore")}>恢复</Button><Button size="small" startIcon={<DeleteOutlineOutlined />} color="error" onClick={() => setConfirmMode("permanent")}>永久删除</Button></> : <Button size="small" startIcon={<DeleteOutlineOutlined />} color="error" onClick={() => setConfirmMode("trash")}>移入回收站</Button>}
+              </Paper>
+            ) : null}
+            <Box sx={{ minHeight: 0, flex: 1, display: "flex", borderTop: 1, borderColor: "divider" }}>{listPanel}</Box>
+          </Box>
+        )}
         detail={<VaultDetail key={selectedItem?.id ?? "empty"} item={selectedItem} onEdit={(item) => setEditorTarget(item)} />}
       />
 
-      {editorTarget !== null ? <VaultEditor open item={editorTarget === "new" ? null : editorTarget} folders={vault.folders} onOpenChange={(open) => { if (!open) setEditorTarget(null); }} onSaved={(item) => { setSelectedId(item.id); setMobilePane("detail"); const url = new URL(window.location.href); url.searchParams.set("item", item.id); window.history.replaceState(null, "", url); }} /> : null}
+      {editorTarget !== null ? <VaultEditor open item={editorTarget === "new" ? null : editorTarget} folders={vault.folders} onOpenChange={(open) => { if (!open) setEditorTarget(null); }} onSaved={(item) => { setSelectedId(item.id); setMobilePane("detail"); updateItemUrl(item.id); }} /> : null}
       <FolderManagerDialog open={folderDialog} folders={vault.folders} onOpenChange={setFolderDialog} onCreate={(name) => folderMutation(() => createFolder(name), "文件夹已创建")} onRename={(id, name) => folderMutation(() => renameFolder(id, name), "文件夹已重命名")} onDelete={(id) => folderMutation(() => deleteFolder(id), "文件夹已删除")} />
       <MoveItemsDialog open={moveDialog} count={checkedItems.length} folders={vault.folders} onOpenChange={setMoveDialog} onMove={async (folderId) => { await runBulk((items) => moveCiphers(items, folderId)); }} />
       <ConfirmItemsDialog open={confirmMode === "archive"} onOpenChange={(open) => { if (!open) setConfirmMode(null); }} title="归档项目" description={`归档 ${checkedItems.length} 个项目。`} confirmLabel="归档" onConfirm={async () => { await runBulk(archiveCiphers); }} />

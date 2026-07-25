@@ -37,9 +37,9 @@ interface SerializeOpts {
 }
 
 // Cipher response — matches Vaultwarden 1.36.0 Cipher::to_json (cipher.rs:336+).
-// Wire format is fully camelCase. The `data` field carries the type-specific
-// payload plus name/notes/fields/passwordHistory mirror keys, and the matching
-// one of {login|secureNote|card|identity|sshKey} is populated with type_data.
+// Wire format is fully camelCase. The legacy `data` field is a JSON string
+// carrying the type-specific payload plus mirror keys; modern typed properties
+// such as {login|secureNote|card|identity|sshKey} carry the parsed type data.
 export function serializeCipher(
   cipher: typeof ciphers.$inferSelect,
   opts: SerializeOpts = {}
@@ -91,7 +91,7 @@ export function serializeCipher(
     name: cipher.name,
     notes: cipher.notes,
     fields,
-    data,
+    data: JSON.stringify(data),
     passwordHistory,
 
     login: null,

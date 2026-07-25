@@ -3,11 +3,12 @@
 import type { ReactNode } from "react";
 import ArrowBackOutlined from "@mui/icons-material/ArrowBackOutlined";
 import { AppBar, Box, Drawer, IconButton, Toolbar, Tooltip } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 
 export type MobilePane = "navigation" | "list" | "detail";
 
-const navigationWidth = 252;
-const listWidth = 380;
+const navigationWidth = 280;
+const listWidth = 408;
 
 export function AppShell({
   header,
@@ -38,22 +39,22 @@ export function AppShell({
         minHeight: 0,
         height: "100%",
         display: "grid",
-        gridTemplateRows: "auto minmax(0, 1fr)",
+        gridTemplateRows: "64px minmax(0, 1fr)",
         gridTemplateColumns: { xs: "minmax(0, 1fr)", md: `${navigationWidth}px ${listWidth}px minmax(0, 1fr)` },
         gridTemplateAreas: { xs: '"header" "content"', md: '"header header header" "navigation list detail"' },
         overflow: "hidden",
         bgcolor: "background.default",
       }}
     >
-      <AppBar component="header" position="static" color="default" elevation={0} sx={{ gridArea: "header", borderBottom: 1, borderColor: "divider" }}>
-        <Toolbar variant="dense" sx={{ minHeight: 56 }}>{header}</Toolbar>
+      <AppBar component="header" position="static" color="transparent" elevation={0} sx={{ gridArea: "header", borderBottom: 1, borderColor: "divider", bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.94 : 0.97), color: "text.primary", backdropFilter: "blur(12px)" }}>
+        <Toolbar sx={{ minHeight: "64px !important", px: { xs: 1, sm: 2 } }}>{header}</Toolbar>
       </AppBar>
 
       <Box
         component="aside"
         aria-label="密码库导航"
         data-active={mobilePane === "navigation"}
-        sx={{ gridArea: "navigation", display: { xs: "none", md: "block" }, minWidth: 0, overflow: "auto", borderRight: 1, borderColor: "divider", bgcolor: "background.paper" }}
+        sx={{ gridArea: "navigation", display: { xs: "none", md: "block" }, minWidth: 0, overflow: "auto", borderRight: 1, borderColor: "divider", bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.06 : 0.025) }}
       >
         {navigation}
       </Box>
@@ -63,7 +64,7 @@ export function AppShell({
         open={mobilePane === "navigation"}
         onClose={onMobileBack}
         ModalProps={{ keepMounted: true }}
-        slotProps={{ paper: { sx: { width: "min(86vw, 320px)" } } }}
+        slotProps={{ paper: { sx: { width: "min(88vw, 336px)", borderTopRightRadius: 4, borderBottomRightRadius: 4, bgcolor: "background.default" } } }}
         sx={{ display: { xs: "block", md: "none" } }}
       >
         {navigation}
@@ -85,7 +86,6 @@ export function AppShell({
           bgcolor: "background.paper",
         }}
       >
-        {onMobileBack ? <Box sx={{ display: { xs: "block", md: "none" }, p: 0.5 }}>{backButton("返回")}</Box> : null}
         {list}
       </Box>
 
@@ -99,6 +99,7 @@ export function AppShell({
           minWidth: 0,
           minHeight: 0,
           overflow: "auto",
+          bgcolor: "background.default",
         }}
       >
         {mobilePane === "detail" && onMobileBack ? <Box sx={{ display: { xs: "block", md: "none" }, p: 0.5 }}>{backButton("返回列表")}</Box> : null}

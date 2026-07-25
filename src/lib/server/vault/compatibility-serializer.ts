@@ -10,6 +10,23 @@ export interface ExtendedCipherOpaqueProjection {
   encryptedPasswordHistory: string | null;
 }
 
+function dataObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 export function projectCipherForLegacyClient(
   serialized: Record<string, unknown>,
   cipher: typeof ciphers.$inferSelect
@@ -23,13 +40,13 @@ export function projectCipherForLegacyClient(
     encryptedPasswordHistory: cipher.passwordHistory,
   };
   const data = {
-    ...(serialized.data && typeof serialized.data === "object" ? serialized.data as Record<string, unknown> : {}),
+    ...dataObject(serialized.data),
     vercelwardenOpaque: opaque,
   };
   return {
     ...serialized,
     type: 2,
-    data,
+    data: JSON.stringify(data),
     secureNote: { type: 0 },
     bankAccount: null,
     drivingLicence: null,
@@ -41,9 +58,8 @@ export function projectCipherForLegacyClient(
 }
 
 export function hasMatchingOpaqueProjection(body: Record<string, unknown>, cipher: typeof ciphers.$inferSelect): boolean {
-  const data = body.data ?? body.Data;
-  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
-  const opaque = (data as Record<string, unknown>).vercelwardenOpaque;
+  const data = dataObject(body.data ?? body.Data);
+  const opaque = data.vercelwardenOpaque;
   if (!opaque || typeof opaque !== "object" || Array.isArray(opaque)) return false;
   const value = opaque as Partial<ExtendedCipherOpaqueProjection>;
   return value.version === 1

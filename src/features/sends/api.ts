@@ -253,42 +253,58 @@ export type PublicSend =
   | { type: "text"; name: string; text: string }
   | { type: "file"; name: string; file: { id: string; fileName: string; size: number; downloadToken: string; checksum: string | null }; sendKey: Uint8Array };
 
+export type PublicSendAccessErrorCode = "password_required" | "invalid_password" | "unavailable";
+
+export class PublicSendAccessError extends Error {
+  constructor(public readonly code: PublicSendAccessErrorCode, message: string) {
+    super(message);
+    this.name = "PublicSendAccessError";
+  }
+}
+
 export async function accessPublicSend(accessId: string, fragment: string, password?: string): Promise<PublicSend> {
   const sendKey = fromBase64url(fragment);
   if (sendKey.length !== 64) throw new Error("分享链接缺少有效解密密钥。");
-  const response = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password: password || undefined }),
-    cache: "no-store",
-  });
-  if (!response.ok) {
+  try {
+    const response = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: password || undefined }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PublicSendAccessError(
+          password ? "invalid_password" : "password_required",
+          password ? "访问密码不正确，请重试。" : "此分享受密码保护。"
+        );
+      }
+      throw new PublicSendAccessError("unavailable", "分享已过期、停用或达到访问次数上限。");
+    }
+    const send = await response.json() as { type: number; name: string; text?: { text?: string }; file?: WireSendFile };
+    const name = await decryptTextWithUserKey(send.name, sendKey);
+    if (send.type === 0) {
+      const text = send.text?.text ? await decryptTextWithUserKey(send.text.text, sendKey) : "";
+      wipeBytes(sendKey);
+      return { type: "text", name, text };
+    }
+    if (!send.file?.id || !send.file.downloadToken) throw new Error("分享文件不可用。");
+    return {
+      type: "file",
+      name,
+      file: {
+        id: send.file.id,
+        fileName: await decryptTextWithUserKey(send.file.fileName, sendKey),
+        size: Number(send.file.size),
+        downloadToken: send.file.downloadToken,
+        checksum: send.file.checksum ?? null,
+      },
+      sendKey,
+    };
+  } catch (error) {
     wipeBytes(sendKey);
-    throw new Error(response.status === 401 ? "访问密码不正确。" : "分享已过期、停用或达到访问次数上限。");
+    throw error;
   }
-  const send = await response.json() as { type: number; name: string; text?: { text?: string }; file?: WireSendFile };
-  const name = await decryptTextWithUserKey(send.name, sendKey);
-  if (send.type === 0) {
-    try {
-      return { type: "text", name, text: send.text?.text ? await decryptTextWithUserKey(send.text.text, sendKey) : "" };
-    } finally { wipeBytes(sendKey); }
-  }
-  if (!send.file?.id || !send.file.downloadToken) {
-    wipeBytes(sendKey);
-    throw new Error("分享文件不可用。");
-  }
-  return {
-    type: "file",
-    name,
-    file: {
-      id: send.file.id,
-      fileName: await decryptTextWithUserKey(send.file.fileName, sendKey),
-      size: Number(send.file.size),
-      downloadToken: send.file.downloadToken,
-      checksum: send.file.checksum ?? null,
-    },
-    sendKey,
-  };
 }
 
 export async function downloadPublicSendFile(accessId: string, send: Extract<PublicSend, { type: "file" }>, onProgress?: (progress: SendTransferProgress) => void) {

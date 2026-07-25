@@ -3,12 +3,14 @@
 import AddOutlined from "@mui/icons-material/AddOutlined";
 import DeleteOutlineOutlined from "@mui/icons-material/DeleteOutlineOutlined";
 import {
+  Alert,
   Box,
   Button,
   FormControl,
   IconButton,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
   TextField,
@@ -47,13 +49,13 @@ function LoginEditor({ draft, onPayloadChange }: EditorProps) {
       <Box sx={{ gridColumn: "1 / -1" }}>
         <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1 }}><Typography component="h4" variant="subtitle1">网站地址</Typography><Button size="small" startIcon={<AddOutlined />} onClick={() => onPayloadChange({ ...payload, uris: [...uris, { uri: "", match: null }] })}>添加地址</Button></Stack>
         {uris.length === 0 ? <Typography color="text.secondary" variant="body2">尚未添加网站地址。</Typography> : <Stack spacing={1}>{uris.map((uri, index) => (
-          <Box key={index} sx={{ display: "grid", gridTemplateColumns: { xs: "1fr auto", sm: "minmax(0, 1fr) 180px auto" }, gap: 1 }}>
+          <Paper key={index} variant="outlined" sx={{ p: 1.25, display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr) auto", sm: "minmax(0, 1fr) 180px auto" }, gap: 1, borderRadius: 2.5 }}>
             <TextField label={`网站地址 ${index + 1}`} value={uri.uri} onChange={(event) => updateUri(index, { uri: event.target.value })} />
             <FormControl sx={{ gridColumn: { xs: "1", sm: "auto" } }}><InputLabel id={`match-${index}`}>匹配规则 {index + 1}</InputLabel><Select labelId={`match-${index}`} label={`匹配规则 ${index + 1}`} value={uri.match == null ? "" : String(uri.match)} onChange={(event) => updateUri(index, { match: event.target.value ? Number(event.target.value) : null })}>
               <MenuItem value="">默认匹配</MenuItem><MenuItem value="0">域名</MenuItem><MenuItem value="1">主机</MenuItem><MenuItem value="2">开头</MenuItem><MenuItem value="3">完全匹配</MenuItem><MenuItem value="4">正则</MenuItem><MenuItem value="5">永不匹配</MenuItem>
             </Select></FormControl>
             <Tooltip title={`删除网站地址 ${index + 1}`}><IconButton aria-label={`删除网站地址 ${index + 1}`} color="error" onClick={() => onPayloadChange({ ...payload, uris: uris.filter((_, uriIndex) => uriIndex !== index) })}><DeleteOutlineOutlined /></IconButton></Tooltip>
-          </Box>
+          </Paper>
         ))}</Stack>}
       </Box>
       <TextField sx={{ gridColumn: "1 / -1" }} label="Passkey 元数据" helperText="兼容保留 FIDO2/Passkey JSON。" multiline minRows={3} value={JSON.stringify(payload.fido2Credentials ?? [], null, 2)} onChange={(event) => { try { onPayloadChange({ ...payload, fido2Credentials: JSON.parse(event.target.value) }); } catch { /* keep last valid value */ } }} />
@@ -65,7 +67,7 @@ function CardEditor({ draft, onPayloadChange }: EditorProps) { return <Box sx={g
 
 export function CredentialEditors(props: EditorProps) {
   if (props.draft.type === 1) return <LoginEditor {...props} />;
-  if (props.draft.type === 2) return <Typography color="text.secondary">安全笔记内容保存在下方备注字段中。</Typography>;
+  if (props.draft.type === 2) return <Alert severity="info">安全笔记内容保存在下方备注字段中。</Alert>;
   if (props.draft.type === 3) return <CardEditor {...props} />;
   return null;
 }
