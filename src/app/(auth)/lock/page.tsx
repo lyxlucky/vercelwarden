@@ -25,7 +25,8 @@ export default function LockPage() {
 
   useEffect(() => {
     if (session.phase === "anonymous") router.replace("/login");
-    if (session.phase === "unlocked" || session.phase === "unlocked-offline") router.replace("/vault");
+    if (session.phase === "unlocked") router.replace("/vault");
+    if (session.phase === "unlocked-offline") window.location.replace("/vault");
   }, [router, session.phase]);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function LockPage() {
     setError("");
     try {
       await unlockWithPassword(password);
-      router.replace("/vault");
+      if (!offline) router.replace("/vault");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法解锁密码库。");
     } finally {

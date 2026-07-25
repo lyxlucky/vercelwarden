@@ -40,28 +40,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
         position: "relative",
         overflow: "hidden",
         bgcolor: "background.default",
-        backgroundImage: [
-          "radial-gradient(circle at 12% 18%, rgba(15, 107, 109, 0.16), transparent 32%)",
-          "radial-gradient(circle at 88% 72%, rgba(37, 99, 168, 0.10), transparent 30%)",
-          "linear-gradient(135deg, rgba(255,255,255,0.62), rgba(244,246,248,0.22))",
-        ].join(","),
+        backgroundImage: "radial-gradient(circle at 18% 0%, rgba(37, 99, 235, 0.10), transparent 34%)",
         ...theme.applyStyles("dark", {
-          backgroundImage: [
-            "radial-gradient(circle at 12% 18%, rgba(87, 183, 180, 0.16), transparent 34%)",
-            "radial-gradient(circle at 88% 72%, rgba(112, 167, 228, 0.10), transparent 32%)",
-            "linear-gradient(135deg, rgba(17,22,27,0.96), rgba(8,12,16,0.98))",
-          ].join(","),
+          backgroundImage: "radial-gradient(circle at 18% 0%, rgba(96, 165, 250, 0.12), transparent 34%)",
         }),
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          inset: 0,
-          opacity: 0.34,
-          pointerEvents: "none",
-          backgroundImage: "linear-gradient(rgba(93,105,117,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(93,105,117,0.08) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
-          maskImage: "linear-gradient(to bottom, black, transparent 82%)",
-        },
       })}
     >
       <Box
@@ -82,9 +64,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            borderRadius: 3,
+            borderRadius: 2,
             bgcolor: "background.paper",
-            boxShadow: "0 12px 34px rgba(15, 23, 42, 0.08)",
+            boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)",
           }}
         >
           <Stack direction="row" spacing={1.25} aria-label="Vercelwarden" sx={{ alignItems: "center" }}>
@@ -97,7 +79,6 @@ export function AuthShell({ children }: { children: ReactNode }) {
                 borderRadius: 2,
                 bgcolor: "primary.main",
                 color: "primary.contrastText",
-                boxShadow: "0 8px 20px rgba(15, 107, 109, 0.24)",
               }}
             >
               <ShieldOutlined fontSize="small" aria-hidden="true" />
@@ -173,12 +154,12 @@ export function AuthShell({ children }: { children: ReactNode }) {
                   display: "flex",
                   gap: 1.5,
                   alignItems: "center",
-                  borderRadius: 2.5,
+                  borderRadius: 2,
                   bgcolor: "background.paper",
                   transition: "border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease",
                   "&:hover": {
                     borderColor: "primary.main",
-                    boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
+                    boxShadow: "0 4px 14px rgba(37, 99, 235, 0.08)",
                   },
                 }}
               >
@@ -231,16 +212,16 @@ export function AuthPanel({
         p: { xs: 2.25, sm: 3.5, md: 4 },
         border: 1,
         borderColor: "divider",
-        borderRadius: { xs: 3, sm: 4 },
+        borderRadius: { xs: 2.5, sm: 3 },
         bgcolor: "background.paper",
-        boxShadow: "0 28px 70px rgba(15, 23, 42, 0.14)",
+        boxShadow: "0 12px 34px rgba(15, 23, 42, 0.10)",
         animation: "auth-panel-enter 320ms ease-out both",
         "@keyframes auth-panel-enter": {
           from: { opacity: 0 },
           to: { opacity: 1 },
         },
         ...theme.applyStyles("dark", {
-          boxShadow: "0 30px 80px rgba(0, 0, 0, 0.38)",
+          boxShadow: "0 14px 38px rgba(0, 0, 0, 0.28)",
         }),
       })}
     >
