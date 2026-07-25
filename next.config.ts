@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       // because their physical implementations live under /api/*.
       beforeFiles: [
         // === Bitwarden clients use root-path access ===
+        { source: "/config", destination: "/api/config" },
         { source: "/identity/:path*", destination: "/api/identity/:path*" },
         { source: "/icons/:path*", destination: "/api/icons/:path*" },
 
