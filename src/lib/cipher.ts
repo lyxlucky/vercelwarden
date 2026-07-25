@@ -11,6 +11,20 @@ export function safeJsonParse<T = unknown>(s: string | null | undefined): T | nu
   }
 }
 
+function normalizeEmptyEncryptedValues(value: unknown): unknown {
+  if (value === "") return null;
+  if (Array.isArray(value)) return value.map(normalizeEmptyEncryptedValues);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        normalizeEmptyEncryptedValues(entry),
+      ])
+    );
+  }
+  return value;
+}
+
 export function extractCipherData(body: Record<string, unknown>) {
   return extractTypedCipherPayload(body);
 }
@@ -30,9 +44,16 @@ export function serializeCipher(
   cipher: typeof ciphers.$inferSelect,
   opts: SerializeOpts = {}
 ) {
-  const typeData = safeJsonParse<Record<string, unknown>>(cipher.data) ?? {};
-  const fields = safeJsonParse(cipher.fields) ?? [];
-  const passwordHistory = safeJsonParse(cipher.passwordHistory) ?? [];
+  // Optional encrypted fields must be null when absent. An empty string is not
+  // a valid EncString; Bitwarden Core interprets it as legacy type 0 with one
+  // part and aborts the entire cipher list with InvalidTypeSymm.
+  const typeData = normalizeEmptyEncryptedValues(
+    safeJsonParse<Record<string, unknown>>(cipher.data) ?? {}
+  ) as Record<string, unknown>;
+  const fields = normalizeEmptyEncryptedValues(safeJsonParse(cipher.fields) ?? []);
+  const passwordHistory = normalizeEmptyEncryptedValues(
+    safeJsonParse(cipher.passwordHistory) ?? []
+  );
 
   // Backwards-compat shim for login items: clients expect a top-level `uri`
   // even when only `uris` is set.
