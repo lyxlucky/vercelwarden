@@ -45,6 +45,15 @@ export const theme = createTheme({
   },
   shape: { borderRadius: 10 },
   spacing: 8,
+  transitions: {
+    easing: {
+      easeInOut: "cubic-bezier(0.4, 0, 0.2, 1)",
+      easeOut: "cubic-bezier(0, 0, 0.2, 1)",
+      easeIn: "cubic-bezier(0.4, 0, 1, 1)",
+      sharp: "cubic-bezier(0.4, 0, 0.6, 1)",
+    },
+    duration: { shortest: 120, shorter: 160, short: 200, standard: 240, complex: 300, enteringScreen: 240, leavingScreen: 180 },
+  },
   components: {
     MuiCssBaseline: {
       styleOverrides: (muiTheme) => ({
@@ -156,7 +165,22 @@ export const theme = createTheme({
       styleOverrides: { root: { marginTop: 6, lineHeight: 1.45 } },
     },
     MuiPaper: {
-      styleOverrides: { root: { backgroundImage: "none" } },
+      styleOverrides: {
+        root: ({ theme: muiTheme }) => ({
+          backgroundImage: "none",
+          transition: muiTheme.transitions.create(["background-color", "border-color", "box-shadow"], { duration: muiTheme.transitions.duration.short }),
+        }),
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: ({ theme: muiTheme }) => ({
+          borderRadius: 16,
+          boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+          transition: muiTheme.transitions.create(["border-color", "box-shadow", "background-color"], { duration: muiTheme.transitions.duration.short }),
+          ...muiTheme.applyStyles("dark", { boxShadow: "0 1px 2px rgba(0, 0, 0, 0.24)" }),
+        }),
+      },
     },
     MuiDialog: { defaultProps: { fullWidth: true, maxWidth: "sm" } },
     MuiDialogTitle: { styleOverrides: { root: { fontSize: "1.125rem", fontWeight: 700 } } },

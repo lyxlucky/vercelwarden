@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Card, CardContent, CardHeader, Divider } from "@mui/material";
+import { Card, CardContent, CardHeader, Divider, Typography } from "@mui/material";
 
 export function SectionCard({ title, description, action, children, danger = false }: {
   title: string;
@@ -10,7 +10,7 @@ export function SectionCard({ title, description, action, children, danger = fal
 }) {
   return (
     <Card variant="outlined" sx={danger ? { borderColor: "error.main" } : undefined}>
-      <CardHeader title={title} subheader={description} action={action} titleTypographyProps={{ component: "h2", variant: "h6" }} />
+      <CardHeader title={<Typography component="h2" variant="h6">{title}</Typography>} subheader={description} action={action} />
       <Divider />
       <CardContent>{children}</CardContent>
     </Card>

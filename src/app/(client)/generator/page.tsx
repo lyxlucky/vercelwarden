@@ -1,10 +1,26 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Check, Copy, RefreshCw, ShieldCheck } from "lucide-react";
-import { Button, Field, Input, Tabs } from "@/components/primitives";
+import CheckOutlined from "@mui/icons-material/CheckOutlined";
+import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
+import RefreshOutlined from "@mui/icons-material/RefreshOutlined";
+import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
+import {
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  FormControlLabel,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { ToolPageShell } from "@/components/ui/ToolPageShell";
 import {
   defaultPassphraseOptions,
   defaultPasswordOptions,
@@ -13,32 +29,110 @@ import {
   passwordStrength,
 } from "@/features/generator/generator";
 
+const passwordFlags = [
+  ["uppercase", "大写字母"],
+  ["lowercase", "小写字母"],
+  ["numbers", "数字"],
+  ["special", "特殊字符"],
+] as const;
+
+const minimumFields = [
+  ["minimumUppercase", "最少大写"],
+  ["minimumLowercase", "最少小写"],
+  ["minimumNumbers", "最少数字"],
+  ["minimumSpecial", "最少特殊字符"],
+] as const;
+
 export default function GeneratorPage() {
   const [mode, setMode] = useState<"password" | "passphrase">("password");
   const [passwordOptions, setPasswordOptions] = useState(defaultPasswordOptions);
   const [passphraseOptions, setPassphraseOptions] = useState(defaultPassphraseOptions);
   const [seed, setSeed] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const generated = useMemo(() => {
     void seed;
     return mode === "password" ? generatePassword(passwordOptions) : generatePassphrase(passphraseOptions);
   }, [mode, passphraseOptions, passwordOptions, seed]);
   const strength = passwordStrength(generated, mode === "passphrase" ? 7_776 : undefined);
+
   const copy = async () => {
-    await navigator.clipboard.writeText(generated);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    try {
+      await navigator.clipboard.writeText(generated);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("error");
+    }
   };
 
-  return <RouteGuard><main className="tool-page"><header className="tool-page__header"><div><Link href="/vault">← 返回密码库</Link><h1>密码生成器</h1><p>全部生成过程仅在当前设备内完成，不会自动保存。</p></div><ShieldCheck size={28} /></header>
-    <section className="tool-card generator-result"><code>{generated}</code><div><Button icon={RefreshCw} onClick={() => setSeed((value) => value + 1)}>重新生成</Button><Button variant="primary" icon={copied ? Check : Copy} onClick={() => void copy()}>{copied ? "已复制" : "复制"}</Button></div><p>强度：<strong>{strength.label}</strong> · 估算 {Math.round(strength.entropy)} bits</p></section>
-    <section className="tool-card"><Tabs.Root value={mode} defaultValue="password" onValueChange={(value) => setMode(value as typeof mode)}><Tabs.List><Tabs.Trigger value="password">密码</Tabs.Trigger><Tabs.Trigger value="passphrase">密码短语</Tabs.Trigger></Tabs.List>
-      <Tabs.Panel value="password" className="tool-options"><Field label="长度"><Input type="number" min={5} max={256} value={passwordOptions.length} onChange={(event) => setPasswordOptions({ ...passwordOptions, length: Number(event.target.value) })} /></Field>
-        {(["uppercase", "lowercase", "numbers", "special"] as const).map((key) => <label className="tool-check" key={key}><input type="checkbox" checked={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: event.target.checked })} />{{ uppercase: "大写字母", lowercase: "小写字母", numbers: "数字", special: "特殊字符" }[key]}</label>)}
-        <label className="tool-check"><input type="checkbox" checked={passwordOptions.avoidAmbiguous} onChange={(event) => setPasswordOptions({ ...passwordOptions, avoidAmbiguous: event.target.checked })} />排除易混淆字符</label>
-        {(["minimumUppercase", "minimumLowercase", "minimumNumbers", "minimumSpecial"] as const).map((key) => <Field key={key} label={{ minimumUppercase: "最少大写", minimumLowercase: "最少小写", minimumNumbers: "最少数字", minimumSpecial: "最少特殊字符" }[key]}><Input type="number" min={0} max={passwordOptions.length} value={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: Number(event.target.value) })} /></Field>)}
-      </Tabs.Panel>
-      <Tabs.Panel value="passphrase" className="tool-options"><Field label="单词数量"><Input type="number" min={3} max={20} value={passphraseOptions.words} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, words: Number(event.target.value) })} /></Field><Field label="分隔符"><Input maxLength={1} value={passphraseOptions.separator} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, separator: event.target.value })} /></Field><label className="tool-check"><input type="checkbox" checked={passphraseOptions.capitalize} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, capitalize: event.target.checked })} />单词首字母大写</label><label className="tool-check"><input type="checkbox" checked={passphraseOptions.includeNumber} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, includeNumber: event.target.checked })} />包含数字</label></Tabs.Panel>
-    </Tabs.Root></section>
-  </main></RouteGuard>;
+  return (
+    <RouteGuard>
+      <ToolPageShell
+        title="密码生成器"
+        description="全部生成过程仅在当前设备内完成，不会自动保存。"
+        actions={<Chip icon={<ShieldOutlined />} label="仅本地生成" color="success" variant="outlined" />}
+        feedback={copyState === "error" ? <Alert severity="error">浏览器拒绝了剪贴板权限，请手动选择并复制结果。</Alert> : undefined}
+      >
+        <SectionCard title="生成结果" description={`强度：${strength.label} · 估算 ${Math.round(strength.entropy)} bits`}>
+          <Stack spacing={2}>
+            <Box
+              component="output"
+              aria-label="生成结果"
+              sx={{
+                display: "block",
+                p: { xs: 2, sm: 2.5 },
+                borderRadius: 3,
+                bgcolor: "action.hover",
+                fontFamily: "monospace",
+                fontSize: { xs: "1rem", sm: "1.2rem" },
+                overflowWrap: "anywhere",
+                userSelect: "all",
+              }}
+            >
+              {generated}
+            </Box>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <Button startIcon={<RefreshOutlined />} onClick={() => setSeed((value) => value + 1)}>重新生成</Button>
+              <Button variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
+                {copyState === "copied" ? "已复制" : "复制"}
+              </Button>
+            </Stack>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard title="生成选项">
+          <Tabs value={mode} onChange={(_, value: "password" | "passphrase") => setMode(value)} aria-label="生成器类型">
+            <Tab value="password" label="密码" />
+            <Tab value="passphrase" label="密码短语" />
+          </Tabs>
+          <Box role="tabpanel" aria-label={mode === "password" ? "密码选项" : "密码短语选项"} sx={{ pt: 3 }}>
+            {mode === "password" ? (
+              <Stack spacing={2.5}>
+                <TextField label="长度" type="number" slotProps={{ htmlInput: { min: 5, max: 256 } }} value={passwordOptions.length} onChange={(event) => setPasswordOptions({ ...passwordOptions, length: Math.min(256, Math.max(5, Number(event.target.value) || 5)) })} />
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1 }}>
+                  {passwordFlags.map(([key, label]) => (
+                    <FormControlLabel key={key} control={<Checkbox checked={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: event.target.checked })} />} label={label} />
+                  ))}
+                  <FormControlLabel control={<Checkbox checked={passwordOptions.avoidAmbiguous} onChange={(event) => setPasswordOptions({ ...passwordOptions, avoidAmbiguous: event.target.checked })} />} label="排除易混淆字符" />
+                </Box>
+                <Typography variant="subtitle2">最低字符数量</Typography>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 2 }}>
+                  {minimumFields.map(([key, label]) => (
+                    <TextField key={key} label={label} type="number" slotProps={{ htmlInput: { min: 0, max: passwordOptions.length } }} value={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: Number(event.target.value) })} />
+                  ))}
+                </Box>
+              </Stack>
+            ) : (
+              <Stack spacing={2.5}>
+                <TextField label="单词数量" type="number" slotProps={{ htmlInput: { min: 3, max: 20 } }} value={passphraseOptions.words} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, words: Math.min(20, Math.max(3, Number(event.target.value) || 3)) })} />
+                <TextField label="分隔符" slotProps={{ htmlInput: { maxLength: 1 } }} value={passphraseOptions.separator} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, separator: event.target.value })} />
+                <FormControlLabel control={<Checkbox checked={passphraseOptions.capitalize} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, capitalize: event.target.checked })} />} label="单词首字母大写" />
+                <FormControlLabel control={<Checkbox checked={passphraseOptions.includeNumber} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, includeNumber: event.target.checked })} />} label="包含数字" />
+              </Stack>
+            )}
+          </Box>
+        </SectionCard>
+      </ToolPageShell>
+    </RouteGuard>
+  );
 }

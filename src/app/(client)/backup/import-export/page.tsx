@@ -1,31 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Download, FileUp, ShieldCheck } from "lucide-react";
-import { Button, Field, Input } from "@/components/primitives";
+import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
+import FileUploadOutlined from "@mui/icons-material/FileUploadOutlined";
+import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
+import { Alert, Box, Button, FormControl, InputLabel, LinearProgress, MenuItem, Select, Stack, TextField, Typography } from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
+import { AsyncState } from "@/components/ui/AsyncState";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { ToolPageShell } from "@/components/ui/ToolPageShell";
 import { verifyMasterPassword } from "@/features/auth/api";
 import { authSecretStore } from "@/features/auth/secret-store";
 import { importVaultDocument, type FolderStrategy, type ImportResult } from "@/features/import-export/api";
-import {
-  detectImportSource,
-  IMPORT_SOURCES,
-  parseImportPayload,
-  preflightImport,
-  type ImportDocument,
-  type ImportSource,
-} from "@/features/import-export/import-registry";
-import {
-  buildAttachmentArchive,
-  buildBitwardenCsv,
-  buildBitwardenJson,
-  openProtectedExport,
-  protectExport,
-  readAttachmentArchive,
-  type AttachmentArchiveEntry,
-  type ProtectedExport,
-} from "@/features/import-export/exporters";
+import { detectImportSource, IMPORT_SOURCES, parseImportPayload, preflightImport, type ImportDocument, type ImportSource } from "@/features/import-export/import-registry";
+import { buildAttachmentArchive, buildBitwardenCsv, buildBitwardenJson, openProtectedExport, protectExport, readAttachmentArchive, type AttachmentArchiveEntry, type ProtectedExport } from "@/features/import-export/exporters";
 import { fetchDecryptedAttachmentBytes, uploadEncryptedAttachment } from "@/features/vault/attachments";
 import { useVaultSnapshot } from "@/features/vault/store";
 import { wipeBytes } from "@/lib/client/crypto/auth";
@@ -76,12 +64,11 @@ export default function ImportExportPage() {
         if (possible.encrypted === true && (possible.mode === "account" || possible.mode === "password")) {
           const key = possible.mode === "account" ? authSecretStore.getVaultKey() : null;
           try {
-            const opened = await openProtectedExport(possible as unknown as ProtectedExport, {
-              accountKey: key ?? undefined,
-              password: importPassword || undefined,
-            });
+            const opened = await openProtectedExport(possible as unknown as ProtectedExport, { accountKey: key ?? undefined, password: importPassword || undefined });
             content = JSON.stringify(opened);
-          } finally { wipeBytes(key ?? undefined); }
+          } finally {
+            wipeBytes(key ?? undefined);
+          }
         }
       }
       const detected = detectImportSource(file.name, content);
@@ -115,12 +102,15 @@ export default function ImportExportPage() {
       setProgress("导入完成");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "导入失败。");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const runExport = async () => {
     setBusy(true);
     setError(null);
+    setProgress("正在准备导出…");
     try {
       const json = buildBitwardenJson(snapshot);
       if (exportFormat === "json" || exportFormat === "csv" || exportFormat === "attachments") {
@@ -132,8 +122,11 @@ export default function ImportExportPage() {
       if (exportFormat === "account") {
         const key = authSecretStore.getVaultKey();
         if (!key) throw new Error("Vault key unavailable.");
-        try { download(JSON.stringify(await protectExport(json, { mode: "account", accountKey: key }), null, 2), "application/json", "vercelwarden-account-encrypted.json"); }
-        finally { wipeBytes(key); }
+        try {
+          download(JSON.stringify(await protectExport(json, { mode: "account", accountKey: key }), null, 2), "application/json", "vercelwarden-account-encrypted.json");
+        } finally {
+          wipeBytes(key);
+        }
       }
       if (exportFormat === "password") {
         if (exportPassword.length < 8) throw new Error("导出密码至少需要 8 个字符。");
@@ -148,32 +141,79 @@ export default function ImportExportPage() {
           const bytes = await fetchDecryptedAttachmentBytes(item.id, attachment);
           attachments.push({ cipherId: item.id, attachmentId: attachment.id, fileName: attachment.fileName, bytes });
         }
-        try { download(buildAttachmentArchive(json, attachments), "application/zip", "vercelwarden-vault-attachments.zip"); }
-        finally { for (const attachment of attachments) wipeBytes(attachment.bytes); }
+        try {
+          download(buildAttachmentArchive(json, attachments), "application/zip", "vercelwarden-vault-attachments.zip");
+        } finally {
+          for (const attachment of attachments) wipeBytes(attachment.bytes);
+        }
       }
       setProgress("导出完成");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "导出失败。");
-    } finally { setBusy(false); }
+      setProgress("");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  return <RouteGuard><main className="tool-page"><header className="tool-page__header"><div><Link href="/vault">← 返回密码库</Link><h1>导入与导出</h1><p>迁移数据时，解析、加密和导出保护均在浏览器内完成。</p></div></header>
-    {error && <p className="tool-error" role="alert">{error}</p>}{progress && <p aria-live="polite">{progress}</p>}
-    <div className="tool-grid"><section className="tool-card"><h2><FileUp size={20} /> 导入</h2>
-      <Field label="来源"><select className="vw-input" value={source} onChange={(event) => { setSource(event.target.value as ImportSource); setDocument(null); }}>{IMPORT_SOURCES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
-      <Field label="受保护导出密码（如适用）"><Input type="password" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} /></Field>
-      <Field label="选择文件"><Input type="file" accept={`${IMPORT_SOURCES.find((item) => item.id === source)?.accept ?? ""},.zip`} onChange={(event) => { const file = event.target.files?.[0]; if (file) void readImportFile(file); }} /></Field>
-      <Field label="文件夹策略"><select className="vw-input" value={folderStrategy} onChange={(event) => setFolderStrategy(event.target.value as FolderStrategy)}><option value="preserve">保留并新建</option><option value="merge">同名合并</option><option value="flatten">全部放到根目录</option></select></Field>
-      {document && <div className="import-preview"><strong>预览</strong><p>{document.items.length} 个项目，{document.folders.length} 个文件夹，{archiveAttachments.length} 个附件。</p>{document.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
-      <Button variant="primary" icon={FileUp} disabled={busy || !document || !preview?.ok} onClick={runImport}>开始导入</Button>
-      {importResult && <p>已导入 {importResult.imported} 项，创建 {importResult.foldersCreated} 个文件夹。</p>}
-    </section>
-    <section className="tool-card"><h2><Download size={20} /> 导出</h2>
-      <Field label="格式"><select className="vw-input" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="json">Bitwarden JSON（明文）</option><option value="csv">Bitwarden CSV（明文）</option><option value="account">账号密钥加密 JSON</option><option value="password">密码保护 JSON</option><option value="attachments">JSON + 附件 ZIP（明文归档）</option></select></Field>
-      {exportFormat === "password" && <Field label="导出密码"><Input type="password" value={exportPassword} onChange={(event) => setExportPassword(event.target.value)} /></Field>}
-      {(exportFormat === "json" || exportFormat === "csv" || exportFormat === "attachments") && <Field label="主密码再认证"><Input type="password" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} /></Field>}
-      <p><ShieldCheck size={16} /> 明文格式会要求重新验证；CSV 单元格会防止公式执行。</p>
-      <Button variant="primary" icon={Download} disabled={busy || snapshot.status !== "ready"} onClick={runExport}>生成导出</Button>
-    </section></div>
-  </main></RouteGuard>;
+  return (
+    <RouteGuard>
+      <ToolPageShell
+        title="导入与导出"
+        description="迁移数据时，解析、加密和导出保护均在浏览器内完成。"
+        feedback={error ? <AsyncState kind="fatal" title="导入或导出失败" description={error} /> : progress ? <Alert severity={progress.endsWith("完成") ? "success" : "info"} icon={false}><Stack spacing={1}><Typography>{progress}</Typography>{busy ? <LinearProgress aria-label={progress} /> : null}</Stack></Alert> : undefined}
+      >
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(2, minmax(0, 1fr))" }, gap: 2.5, alignItems: "start" }}>
+          <SectionCard title="导入" description="支持常见密码管理器格式和带附件归档。" action={<FileUploadOutlined color="primary" />}>
+            <Stack spacing={2.25}>
+              <FormControl>
+                <InputLabel id="import-source-label">来源</InputLabel>
+                <Select labelId="import-source-label" label="来源" value={source} onChange={(event) => { setSource(event.target.value as ImportSource); setDocument(null); }}>
+                  {IMPORT_SOURCES.map((item) => <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField label="受保护导出密码（如适用）" type="password" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} />
+              <TextField label="选择文件" type="file" slotProps={{ inputLabel: { shrink: true }, htmlInput: { accept: `${IMPORT_SOURCES.find((item) => item.id === source)?.accept ?? ""},.zip` } }} onChange={(event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (file) void readImportFile(file); }} />
+              <FormControl>
+                <InputLabel id="folder-strategy-label">文件夹策略</InputLabel>
+                <Select labelId="folder-strategy-label" label="文件夹策略" value={folderStrategy} onChange={(event) => setFolderStrategy(event.target.value as FolderStrategy)}>
+                  <MenuItem value="preserve">保留并新建</MenuItem>
+                  <MenuItem value="merge">同名合并</MenuItem>
+                  <MenuItem value="flatten">全部放到根目录</MenuItem>
+                </Select>
+              </FormControl>
+              {document ? (
+                <Alert severity={preview?.ok ? "info" : "warning"}>
+                  <Typography sx={{ fontWeight: 700 }}>预览</Typography>
+                  <Typography variant="body2">{document.items.length} 个项目，{document.folders.length} 个文件夹，{archiveAttachments.length} 个附件。</Typography>
+                  {document.warnings.map((warning) => <Typography variant="body2" key={warning}>{warning}</Typography>)}
+                </Alert>
+              ) : null}
+              <Button variant="contained" startIcon={<FileUploadOutlined />} disabled={busy || !document || !preview?.ok} onClick={() => void runImport()}>开始导入</Button>
+              {importResult ? <AsyncState kind={importResult.failed ? "partial" : "success"} title="导入完成" description={`已导入 ${importResult.imported} 项，创建 ${importResult.foldersCreated} 个文件夹。${importResult.failed ? ` ${importResult.failed} 项失败。` : ""}`} /> : null}
+            </Stack>
+          </SectionCard>
+
+          <SectionCard title="导出" description="选择明文、账号密钥或独立密码保护格式。" action={<DownloadOutlined color="primary" />}>
+            <Stack spacing={2.25}>
+              <FormControl>
+                <InputLabel id="export-format-label">格式</InputLabel>
+                <Select labelId="export-format-label" label="格式" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>
+                  <MenuItem value="json">Bitwarden JSON（明文）</MenuItem>
+                  <MenuItem value="csv">Bitwarden CSV（明文）</MenuItem>
+                  <MenuItem value="account">账号密钥加密 JSON</MenuItem>
+                  <MenuItem value="password">密码保护 JSON</MenuItem>
+                  <MenuItem value="attachments">JSON + 附件 ZIP（明文归档）</MenuItem>
+                </Select>
+              </FormControl>
+              {exportFormat === "password" ? <TextField label="导出密码" type="password" value={exportPassword} onChange={(event) => setExportPassword(event.target.value)} /> : null}
+              {exportFormat === "json" || exportFormat === "csv" || exportFormat === "attachments" ? <TextField label="主密码再认证" type="password" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} /> : null}
+              <Alert severity="info" icon={<VerifiedUserOutlined />}>明文格式会要求重新验证；CSV 单元格会防止公式执行。</Alert>
+              <Button variant="contained" startIcon={<DownloadOutlined />} disabled={busy || snapshot.status !== "ready"} onClick={() => void runExport()}>生成导出</Button>
+            </Stack>
+          </SectionCard>
+        </Box>
+      </ToolPageShell>
+    </RouteGuard>
+  );
 }
