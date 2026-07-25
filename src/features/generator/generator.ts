@@ -85,11 +85,21 @@ export function generatePassphrase(options: PassphraseGeneratorOptions) {
   return words.join(options.separator);
 }
 
+function strengthFromEntropy(entropy: number) {
+  const score = entropy < 40 ? 0 : entropy < 60 ? 1 : entropy < 80 ? 2 : 3;
+  return { entropy, score, label: (["弱", "一般", "良好", "强"] as const)[score]! };
+}
+
 export function passwordStrength(value: string, alphabetSize?: number) {
   const inferred = alphabetSize ?? [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].reduce((total, pattern, index) => total + (pattern.test(value) ? [26, 26, 10, 32][index]! : 0), 0);
   const entropy = value.length * Math.log2(Math.max(inferred, 1));
-  const score = entropy < 40 ? 0 : entropy < 60 ? 1 : entropy < 80 ? 2 : 3;
-  return { entropy, score, label: (["弱", "一般", "良好", "强"] as const)[score]! };
+  return strengthFromEntropy(entropy);
+}
+
+export function passphraseStrength(options: Pick<PassphraseGeneratorOptions, "words" | "includeNumber">) {
+  const entropy = options.words * Math.log2(EFFLongWordList.length)
+    + (options.includeNumber ? Math.log2(options.words * 10) : 0);
+  return strengthFromEntropy(entropy);
 }
 
 export const defaultPasswordOptions: PasswordGeneratorOptions = {

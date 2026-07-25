@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import CheckOutlined from "@mui/icons-material/CheckOutlined";
 import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import RefreshOutlined from "@mui/icons-material/RefreshOutlined";
@@ -26,6 +26,7 @@ import {
   defaultPasswordOptions,
   generatePassphrase,
   generatePassword,
+  passphraseStrength,
   passwordStrength,
 } from "@/features/generator/generator";
 
@@ -43,19 +44,59 @@ const minimumFields = [
   ["minimumSpecial", "最少特殊字符"],
 ] as const;
 
+function generatorErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "生成选项无效。";
+
+  const messages: Record<string, string> = {
+    "Password length must be between 5 and 256.": "密码长度必须在 5 到 256 之间。",
+    "Enable at least one character group.": "至少启用一个字符组。",
+    "Minimum counts cannot be negative.": "最低字符数量必须是非负整数。",
+    "Minimum character counts exceed password length.": "最低字符数量总和不能超过密码长度。",
+    "Passphrase word count must be between 3 and 20.": "密码短语的单词数量必须在 3 到 20 之间。",
+    "Passphrase separator must be one character or empty.": "分隔符只能是一个字符或留空。",
+  };
+
+  return messages[error.message] ?? "无法按当前选项生成，请检查设置。";
+}
+
 export default function GeneratorPage() {
   const [mode, setMode] = useState<"password" | "passphrase">("password");
   const [passwordOptions, setPasswordOptions] = useState(defaultPasswordOptions);
   const [passphraseOptions, setPassphraseOptions] = useState(defaultPassphraseOptions);
   const [seed, setSeed] = useState(0);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const generated = useMemo(() => {
-    void seed;
-    return mode === "password" ? generatePassword(passwordOptions) : generatePassphrase(passphraseOptions);
+  const [generated, setGenerated] = useState("");
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      void seed;
+      try {
+        setGenerated(mode === "password" ? generatePassword(passwordOptions) : generatePassphrase(passphraseOptions));
+        setGenerationError(null);
+      } catch (error) {
+        setGenerated("");
+        setGenerationError(generatorErrorMessage(error));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [mode, passphraseOptions, passwordOptions, seed]);
-  const strength = passwordStrength(generated, mode === "passphrase" ? 7_776 : undefined);
+  const strength = generated
+    ? mode === "password"
+      ? passwordStrength(generated)
+      : passphraseStrength(passphraseOptions)
+    : null;
 
   const copy = async () => {
+    if (!generated) return;
+
     try {
       await navigator.clipboard.writeText(generated);
       setCopyState("copied");
@@ -71,9 +112,16 @@ export default function GeneratorPage() {
         title="密码生成器"
         description="全部生成过程仅在当前设备内完成，不会自动保存。"
         actions={<Chip icon={<ShieldOutlined />} label="仅本地生成" color="success" variant="outlined" />}
-        feedback={copyState === "error" ? <Alert severity="error">浏览器拒绝了剪贴板权限，请手动选择并复制结果。</Alert> : undefined}
+        feedback={generationError
+          ? <Alert severity="warning">{generationError}</Alert>
+          : copyState === "error"
+            ? <Alert severity="error">浏览器拒绝了剪贴板权限，请手动选择并复制结果。</Alert>
+            : undefined}
       >
-        <SectionCard title="生成结果" description={`强度：${strength.label} · 估算 ${Math.round(strength.entropy)} bits`}>
+        <SectionCard
+          title="生成结果"
+          description={strength ? `强度：${strength.label} · 估算 ${Math.round(strength.entropy)} bits` : "请检查生成选项"}
+        >
           <Stack spacing={2}>
             <Box
               component="output"
@@ -89,11 +137,11 @@ export default function GeneratorPage() {
                 userSelect: "all",
               }}
             >
-              {generated}
+              {generated || "等待生成…"}
             </Box>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
               <Button startIcon={<RefreshOutlined />} onClick={() => setSeed((value) => value + 1)}>重新生成</Button>
-              <Button variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
+              <Button disabled={!generated} variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
                 {copyState === "copied" ? "已复制" : "复制"}
               </Button>
             </Stack>
