@@ -45,13 +45,18 @@ export function wipeBytes(bytes: Uint8Array | undefined): void {
 export async function deriveMasterKey(parameters: MasterKeyParameters): Promise<Uint8Array> {
   const length = parameters.length ?? 32;
   if (parameters.algorithm === "argon2id") {
-    return argon2idAsync(parameters.password, parameters.salt, {
-      t: parameters.iterations,
-      m: parameters.memoryKiB,
-      p: parameters.parallelism,
-      dkLen: length,
-      asyncTick: 20,
-    });
+    const salt = new Uint8Array(await crypto.subtle.digest("SHA-256", owned(parameters.salt)));
+    try {
+      return await argon2idAsync(parameters.password, salt, {
+        t: parameters.iterations,
+        m: parameters.memoryKiB,
+        p: parameters.parallelism,
+        dkLen: length,
+        asyncTick: 20,
+      });
+    } finally {
+      wipeBytes(salt);
+    }
   }
 
   const source = await crypto.subtle.importKey("raw", owned(parameters.password), "PBKDF2", false, ["deriveBits"]);
