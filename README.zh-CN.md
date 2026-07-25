@@ -154,3 +154,19 @@ vercel env add ADMIN_PASSWORD
 ## 许可证
 
 MIT
+
+## 自有 Web Vault（2026-07）
+
+仓库现已使用 Next.js App Router 自有客户端替代旧 `public/web-vault/**` 静态 SPA。旧 `/web-vault` 深链会迁移到 `/login`、`/vault`、`/settings`、`/generator` 或 `/sends`，不再恢复已删除的旧客户端资产。
+
+管理员治理入口包括 `/admin`、`/logs` 和 `/backup`。生产环境至少配置：
+
+- `ADMIN_BOOTSTRAP_EMAIL`：首次管理员账号邮箱；仅在尚无管理员时提升。
+- `SERVER_ENCRYPTION_KEY`：32 字节 Base64，用于服务端机密配置。
+- `BACKUP_ENCRYPTION_KEY`：另一把独立的 32 字节 Base64，用于备份数据密钥包装。
+- `ENABLE_ADMIN_INVITES=true`、`ENABLE_ADMIN_AUDIT=true`、`ENABLE_ADMIN_BACKUP=true`：逐项开启治理能力。
+- `MAINTENANCE_CRON_SECRET`：保护 `/api/internal/maintenance` 清理任务。
+
+备份支持本地开发存储、Vercel Blob 和 WebDAV，归档包含版本化 manifest、AES-256-GCM 认证加密和 SHA-256 完整性摘要。下载、删除、目标配置及 merge/replace 恢复均要求管理员 Bearer 会话和用途绑定的再认证证明。
+
+升级时依次执行 Drizzle migrations（当前新增 `0007_account_security.sql`、`0008_admin_governance.sql`），完成 `pnpm build`、`pnpm test`、`pnpm test:contract` 与 `pnpm test:e2e` 后再打开能力开关。

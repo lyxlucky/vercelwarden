@@ -14,6 +14,11 @@
 /coverage
 /test-results
 /playwright-report
+/tests/
+/playwright.config.ts
+/vitest.config.ts
+/scripts/seed-test-data.ts
+/.github/workflows/vault-client.yml
 
 # next.js
 /.next/
@@ -40,6 +45,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.*.example
 
 # vercel
 /.vercel/
@@ -63,3 +70,9 @@ next-env.d.ts
 # local runtime and backup artifacts
 /.turbo/
 *.vwb
+
+# local agent and specification workspaces
+/.agent/
+/.agents/
+/.specify/
+/specs/
