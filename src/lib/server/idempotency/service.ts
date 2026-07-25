@@ -48,7 +48,7 @@ export async function beginIdempotentRequest(input: BeginIdempotencyInput) {
     throw new ApiError(400, "invalid_idempotency_key", "A valid Idempotency-Key is required.");
   }
   const now = new Date();
-  await db
+  const [inserted] = await db
     .insert(idempotencyRecords)
     .values({
       uuid: randomUUID(),
@@ -60,7 +60,10 @@ export async function beginIdempotentRequest(input: BeginIdempotencyInput) {
       createdAt: now,
       expiresAt: new Date(now.getTime() + (input.ttlMs ?? 24 * 60 * 60 * 1000)),
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning();
+  if (inserted) return { decision: "execute", record: inserted } as const;
+
   const [record] = await db
     .select()
     .from(idempotencyRecords)
