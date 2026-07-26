@@ -63,7 +63,11 @@ export function serializeSend(send: typeof sends.$inferSelect, file?: typeof sen
     maxAccessCount: send.maxAccessCount,
     accessCount: send.accessCount,
     password: send.password ? "protected" : null,
-    authType: send.password ? 1 : 0,
+    emails: null,
+    // Bitwarden Send auth types: 0 = email, 1 = password, 2 = none.
+    // Reporting unrestricted Sends as email-authenticated makes official
+    // clients treat the response as an incomplete email-verification Send.
+    authType: send.password ? 1 : 2,
     disabled: send.disabled,
     hideEmail: send.hideEmail,
 
