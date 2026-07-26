@@ -7,6 +7,7 @@ import { refreshSession } from "@/features/auth/api";
 import { lockController } from "@/features/auth/lock-controller";
 import { discoverOfflineAccount } from "@/lib/client/offline/unlock";
 import { registerServiceWorker } from "@/lib/client/pwa/register";
+import { redirectLegacyHashRoute } from "@/lib/client/routing/legacy-hash-route";
 import { connectivityController } from "@/lib/client/state/connectivity";
 
 const authPaths = new Set(["/login", "/register", "/recover-2fa"]);
@@ -19,6 +20,7 @@ export function AuthLifecycle() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (redirectLegacyHashRoute(window.location)) return;
     if (isPublicSendPath(pathname)) return;
 
     lockController.start();
