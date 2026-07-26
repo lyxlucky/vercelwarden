@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
 import FileUploadOutlined from "@mui/icons-material/FileUploadOutlined";
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
@@ -31,6 +31,7 @@ function download(data: BlobPart, type: string, name: string) {
 
 export default function ImportExportPage() {
   const snapshot = useVaultSnapshot();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<ImportSource>("bitwarden-json");
   const [folderStrategy, setFolderStrategy] = useState<FolderStrategy>("preserve");
   const [document, setDocument] = useState<ImportDocument | null>(null);
@@ -43,7 +44,17 @@ export default function ImportExportPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState("");
   const preview = useMemo(() => document ? preflightImport(document, { maxItems: 10_000, maxBytes: 500 * 1024 * 1024 }) : null, [document]);
+  const importAccept = `${IMPORT_SOURCES.find((item) => item.id === source)?.accept ?? ""},.zip`;
+
+  const resetImportFile = () => {
+    setSelectedFileName("");
+    setDocument(null);
+    setArchiveAttachments([]);
+    setImportResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const readImportFile = async (file: File) => {
     setError(null);
@@ -168,12 +179,44 @@ export default function ImportExportPage() {
             <Stack spacing={2.25}>
               <FormControl>
                 <InputLabel id="import-source-label">来源</InputLabel>
-                <Select labelId="import-source-label" label="来源" value={source} onChange={(event) => { setSource(event.target.value as ImportSource); setDocument(null); }}>
+                <Select labelId="import-source-label" label="来源" value={source} onChange={(event) => { setSource(event.target.value as ImportSource); resetImportFile(); }}>
                   {IMPORT_SOURCES.map((item) => <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>)}
                 </Select>
               </FormControl>
               <TextField label="受保护导出密码（如适用）" type="password" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} />
-              <TextField label="选择文件" type="file" slotProps={{ inputLabel: { shrink: true }, htmlInput: { accept: `${IMPORT_SOURCES.find((item) => item.id === source)?.accept ?? ""},.zip` } }} onChange={(event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (file) void readImportFile(file); }} />
+              <Box>
+                <input
+                  ref={fileInputRef}
+                  data-testid="import-file-input"
+                  aria-label="选择文件"
+                  type="file"
+                  accept={importAccept}
+                  tabIndex={-1}
+                  hidden
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    if (!file) return;
+                    setSelectedFileName(file.name);
+                    void readImportFile(file);
+                  }}
+                />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FileUploadOutlined />}
+                    disabled={busy}
+                    aria-describedby="import-file-name"
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    {selectedFileName ? "重新选择文件" : "选择导入文件"}
+                  </Button>
+                  <Typography id="import-file-name" role="status" aria-live="polite" variant="body2" color="text.secondary" sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                    {selectedFileName || "尚未选择文件"}
+                  </Typography>
+                </Stack>
+              </Box>
               <FormControl>
                 <InputLabel id="folder-strategy-label">文件夹策略</InputLabel>
                 <Select labelId="folder-strategy-label" label="文件夹策略" value={folderStrategy} onChange={(event) => setFolderStrategy(event.target.value as FolderStrategy)}>
