@@ -19,6 +19,7 @@ import {
   completeIdempotentRequest,
   fingerprintBody,
 } from "@/lib/server/idempotency/service";
+import { commitUserMutation } from "@/lib/server/mutations/commit";
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
 
@@ -36,6 +37,7 @@ function validDate(value: unknown, required = false) {
 
 async function insertFileSend(input: {
   userUuid: string;
+  actingDeviceIdentifier: string;
   model: Record<string, unknown>;
   metadata: ReturnType<typeof validateSendFileMetadata>;
   sendUuid: string;
@@ -51,51 +53,62 @@ async function insertFileSend(input: {
   if (expirationDate === null) throw new Error("expirationDate must be a valid date");
   if (deletionDate.getTime() <= Date.now()) throw new Error("deletionDate must be in the future");
   const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx.insert(sends).values({
-      uuid: input.sendUuid,
-      userUuid: input.userUuid,
-      name: String(input.model.name ?? input.model.Name ?? ""),
-      notes: typeof (input.model.notes ?? input.model.Notes) === "string" ? String(input.model.notes ?? input.model.Notes) : null,
-      type: 1,
-      data: JSON.stringify({
-        id: input.fileUuid,
+  const password = await hashSendPassword(
+    typeof (input.model.password ?? input.model.Password) === "string"
+      ? String(input.model.password ?? input.model.Password)
+      : null
+  );
+  await commitUserMutation({
+    userUuid: input.userUuid,
+    resourceKind: "send",
+    resourceId: input.sendUuid,
+    actingDeviceIdentifier: input.actingDeviceIdentifier,
+    mutate: async (tx) => {
+      await tx.insert(sends).values({
+        uuid: input.sendUuid,
+        userUuid: input.userUuid,
+        name: String(input.model.name ?? input.model.Name ?? ""),
+        notes: typeof (input.model.notes ?? input.model.Notes) === "string" ? String(input.model.notes ?? input.model.Notes) : null,
+        type: 1,
+        data: JSON.stringify({
+          id: input.fileUuid,
+          fileName: input.metadata.fileName,
+          size: input.metadata.fileSize,
+          key: input.metadata.key,
+        }),
+        key: String(input.model.key ?? input.model.Key ?? ""),
+        password,
+        maxAccessCount: count(input.model.maxAccessCount ?? input.model.MaxAccessCount),
+        accessCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        expirationDate: expirationDate ?? null,
+        deletionDate,
+        disabled: Boolean(input.model.disabled ?? input.model.Disabled ?? false),
+        hideEmail: Boolean(input.model.hideEmail ?? input.model.HideEmail ?? false),
+      });
+      await tx.insert(sendFiles).values({
+        uuid: input.fileUuid,
+        sendUuid: input.sendUuid,
         fileName: input.metadata.fileName,
-        size: input.metadata.fileSize,
         key: input.metadata.key,
-      }),
-      key: String(input.model.key ?? input.model.Key ?? ""),
-      password: await hashSendPassword(typeof (input.model.password ?? input.model.Password) === "string" ? String(input.model.password ?? input.model.Password) : null),
-      maxAccessCount: count(input.model.maxAccessCount ?? input.model.MaxAccessCount),
-      accessCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      expirationDate: expirationDate ?? null,
-      deletionDate,
-      disabled: Boolean(input.model.disabled ?? input.model.Disabled ?? false),
-      hideEmail: Boolean(input.model.hideEmail ?? input.model.HideEmail ?? false),
-    });
-    await tx.insert(sendFiles).values({
-      uuid: input.fileUuid,
-      sendUuid: input.sendUuid,
-      fileName: input.metadata.fileName,
-      key: input.metadata.key,
-      fileSize: input.metadata.fileSize,
-      blobUrl: input.blobUrl ?? "",
-      status: input.status,
-      checksum: input.metadata.checksum,
-      uploadTokenHash: input.uploadTokenHash ?? null,
-      uploadExpiresAt: input.uploadExpiresAt ?? null,
-      createdAt: now,
-      completedAt: input.status === "complete" ? now : null,
-    });
+        fileSize: input.metadata.fileSize,
+        blobUrl: input.blobUrl ?? "",
+        status: input.status,
+        checksum: input.metadata.checksum,
+        uploadTokenHash: input.uploadTokenHash ?? null,
+        uploadExpiresAt: input.uploadExpiresAt ?? null,
+        createdAt: now,
+        completedAt: input.status === "complete" ? now : null,
+      });
+    },
   });
   const [created] = await db.select().from(sends).where(eq(sends.uuid, input.sendUuid)).limit(1);
   const [file] = await db.select().from(sendFiles).where(eq(sendFiles.uuid, input.fileUuid)).limit(1);
   return { created: created!, file: file! };
 }
 
-async function legacyMultipart(request: NextRequest, userUuid: string) {
+async function legacyMultipart(request: NextRequest, userUuid: string, actingDeviceIdentifier: string) {
   const formData = await request.formData();
   const file = formData.get("data") as File | null;
   const modelRaw = formData.get("model");
@@ -119,7 +132,16 @@ async function legacyMultipart(request: NextRequest, userUuid: string) {
   const fileUuid = newUuid();
   const blob = await put(`sends/${userUuid}/${sendUuid}/${fileUuid}`, file, { access: "private", addRandomSuffix: false });
   try {
-    const inserted = await insertFileSend({ userUuid, model, metadata, sendUuid, fileUuid, status: "complete", blobUrl: blob.url });
+    const inserted = await insertFileSend({
+      userUuid,
+      actingDeviceIdentifier,
+      model,
+      metadata,
+      sendUuid,
+      fileUuid,
+      status: "complete",
+      blobUrl: blob.url,
+    });
     return NextResponse.json(serializeSend(inserted.created, inserted.file), { status: 201, headers: noStore });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : "Unable to create file Send");
@@ -130,7 +152,9 @@ export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request.headers.get("authorization"));
   if (!auth) return unauthorized();
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  if (contentType.startsWith("multipart/form-data")) return legacyMultipart(request, auth.user.uuid);
+  if (contentType.startsWith("multipart/form-data")) {
+    return legacyMultipart(request, auth.user.uuid, auth.device.identifier);
+  }
   if (!contentType.startsWith("application/json")) return errorResponse("Expected JSON metadata or multipart upload", 415);
   await cleanupExpiredPendingSendFiles();
   const model = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -161,6 +185,7 @@ export async function POST(request: NextRequest) {
     const credential = issueSendFileUploadCredential();
     const inserted = await insertFileSend({
       userUuid: auth.user.uuid,
+      actingDeviceIdentifier: auth.device.identifier,
       model,
       metadata,
       sendUuid,
@@ -202,16 +227,22 @@ export async function PUT(request: NextRequest) {
   if (file.checksum && file.checksum !== checksum) return errorResponse("Send file checksum mismatch");
   const blob = await put(`sends/${auth.user.uuid}/${sendUuid}/${fileUuid}`, new Blob([payload]), { access: "private", addRandomSuffix: false });
   const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx.update(sendFiles).set({
-      blobUrl: blob.url,
-      status: "complete",
-      checksum,
-      uploadTokenHash: null,
-      uploadExpiresAt: null,
-      completedAt: now,
-    }).where(eq(sendFiles.uuid, fileUuid));
-    await tx.update(sends).set({ updatedAt: now }).where(eq(sends.uuid, sendUuid));
+  await commitUserMutation({
+    userUuid: auth.user.uuid,
+    resourceKind: "send",
+    resourceId: sendUuid,
+    actingDeviceIdentifier: auth.device.identifier,
+    mutate: async (tx) => {
+      await tx.update(sendFiles).set({
+        blobUrl: blob.url,
+        status: "complete",
+        checksum,
+        uploadTokenHash: null,
+        uploadExpiresAt: null,
+        completedAt: now,
+      }).where(eq(sendFiles.uuid, fileUuid));
+      await tx.update(sends).set({ updatedAt: now }).where(eq(sends.uuid, sendUuid));
+    },
   });
   return NextResponse.json({ object: "sendFile", sendId: sendUuid, fileId: fileUuid, status: "complete", checksum }, { headers: noStore });
 }

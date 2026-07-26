@@ -5,6 +5,7 @@ import { sendFiles, sends } from "@/db/schema";
 import { verifyAuth, newUuid } from "@/lib/auth";
 import { unauthorized, errorResponse } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
+import { commitUserMutation } from "@/lib/server/mutations/commit";
 import { deleteSendBlobs, hashSendPassword } from "@/lib/server/sends/service";
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
@@ -54,23 +55,34 @@ export async function POST(request: NextRequest) {
 
   const id = newUuid();
   const now = new Date();
-  await db.insert(sends).values({
-    uuid: id,
+  const password = await hashSendPassword(
+    typeof (body.password ?? body.Password) === "string" ? String(body.password ?? body.Password) : null
+  );
+  await commitUserMutation({
     userUuid: auth.user.uuid,
-    name: String(body.name ?? body.Name ?? ""),
-    notes: typeof (body.notes ?? body.Notes) === "string" ? String(body.notes ?? body.Notes) : null,
-    type: 0,
-    data: JSON.stringify(data),
-    key: String(body.key ?? body.Key ?? ""),
-    password: await hashSendPassword(typeof (body.password ?? body.Password) === "string" ? String(body.password ?? body.Password) : null),
-    maxAccessCount: optionalCount(body.maxAccessCount ?? body.MaxAccessCount),
-    accessCount: 0,
-    createdAt: now,
-    updatedAt: now,
-    expirationDate: expirationDate ?? null,
-    deletionDate,
-    disabled: Boolean(body.disabled ?? body.Disabled ?? false),
-    hideEmail: Boolean(body.hideEmail ?? body.HideEmail ?? false),
+    resourceKind: "send",
+    resourceId: id,
+    actingDeviceIdentifier: auth.device.identifier,
+    mutate: async (tx) => {
+      await tx.insert(sends).values({
+        uuid: id,
+        userUuid: auth.user.uuid,
+        name: String(body.name ?? body.Name ?? ""),
+        notes: typeof (body.notes ?? body.Notes) === "string" ? String(body.notes ?? body.Notes) : null,
+        type: 0,
+        data: JSON.stringify(data),
+        key: String(body.key ?? body.Key ?? ""),
+        password,
+        maxAccessCount: optionalCount(body.maxAccessCount ?? body.MaxAccessCount),
+        accessCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        expirationDate: expirationDate ?? null,
+        deletionDate,
+        disabled: Boolean(body.disabled ?? body.Disabled ?? false),
+        hideEmail: Boolean(body.hideEmail ?? body.HideEmail ?? false),
+      });
+    },
   });
   const [created] = await db.select().from(sends).where(eq(sends.uuid, id)).limit(1);
   return NextResponse.json(serializeSend(created!), { status: 201, headers: noStore });
@@ -87,16 +99,30 @@ export async function DELETE(request: NextRequest) {
   const owned = await db.select().from(sends).where(and(eq(sends.userUuid, auth.user.uuid), inArray(sends.uuid, ids)));
   const ownedById = new Map(owned.map((send) => [send.uuid, send]));
   const outcomes = [] as Array<{ id: string; status: "deleted" | "not_found" | "partial"; code?: string }>;
+  const ownedIds: string[] = [];
   for (const id of ids) {
     if (!ownedById.has(id)) {
       outcomes.push({ id, status: "not_found", code: "not_found" });
       continue;
     }
     const blobs = await deleteSendBlobs(id);
-    await db.delete(sends).where(and(eq(sends.uuid, id), eq(sends.userUuid, auth.user.uuid)));
+    ownedIds.push(id);
     outcomes.push(blobs.some((item) => item.status !== "deleted")
       ? { id, status: "partial", code: "blob_cleanup_failed" }
       : { id, status: "deleted" });
+  }
+  if (ownedIds.length > 0) {
+    await commitUserMutation({
+      userUuid: auth.user.uuid,
+      resourceKind: "send",
+      actingDeviceIdentifier: auth.device.identifier,
+      mutate: async (tx) => {
+        await tx.delete(sends).where(and(
+          eq(sends.userUuid, auth.user.uuid),
+          inArray(sends.uuid, ownedIds)
+        ));
+      },
+    });
   }
   const succeeded = outcomes.filter((outcome) => outcome.status === "deleted").length;
   return NextResponse.json({ object: "bulkSendDelete", succeeded, failed: outcomes.length - succeeded, outcomes }, { headers: noStore });

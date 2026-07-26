@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
 import { jsonResponse, unauthorized, notFound, errorResponse } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
+import { commitUserMutation } from "@/lib/server/mutations/commit";
 import { deleteSendBlobs, hashSendPassword } from "@/lib/server/sends/service";
 
 // GET /api/sends/[id]
@@ -71,43 +72,52 @@ export async function PUT(
     : typeof maxAccessRaw === "string"
       ? parseInt(maxAccessRaw)
       : null;
+  const password = passwordProvided
+    ? await hashSendPassword(((body.password ?? body.Password) as string | null) ?? null)
+    : existing.password;
 
-  await db
-    .update(sends)
-    .set({
-      name: nameProvided ? String(body.name ?? body.Name ?? "") : existing.name,
-      notes: notesProvided ? (typeof (body.notes ?? body.Notes) === "string" ? String(body.notes ?? body.Notes) : null) : existing.notes,
-      data: dataField ? JSON.stringify(dataField) : existing.data,
-      key: ((body.key ?? body.Key) as string) ?? existing.key,
-      password: passwordProvided
-        ? await hashSendPassword(((body.password ?? body.Password) as string | null) ?? null)
-        : existing.password,
-      maxAccessCount: maxAccessProvided ? maxAccess : existing.maxAccessCount,
-      expirationDate: expirationProvided
-        ? body.expirationDate ?? body.ExpirationDate
-          ? new Date((body.expirationDate ?? body.ExpirationDate) as string)
-          : null
-        : existing.expirationDate,
-      deletionDate: deletionProvided
-        ? new Date((body.deletionDate ?? body.DeletionDate) as string)
-        : existing.deletionDate,
-      disabled: disabledProvided ? Boolean(body.disabled ?? body.Disabled) : existing.disabled,
-      hideEmail: hideEmailProvided ? Boolean(body.hideEmail ?? body.HideEmail) : existing.hideEmail,
-      updatedAt: new Date(),
-    })
-    .where(eq(sends.uuid, id));
+  await commitUserMutation({
+    userUuid: auth.user.uuid,
+    resourceKind: "send",
+    resourceId: id,
+    actingDeviceIdentifier: auth.device.identifier,
+    mutate: async (tx) => {
+      await tx
+        .update(sends)
+        .set({
+          name: nameProvided ? String(body.name ?? body.Name ?? "") : existing.name,
+          notes: notesProvided ? (typeof (body.notes ?? body.Notes) === "string" ? String(body.notes ?? body.Notes) : null) : existing.notes,
+          data: dataField ? JSON.stringify(dataField) : existing.data,
+          key: ((body.key ?? body.Key) as string) ?? existing.key,
+          password,
+          maxAccessCount: maxAccessProvided ? maxAccess : existing.maxAccessCount,
+          expirationDate: expirationProvided
+            ? body.expirationDate ?? body.ExpirationDate
+              ? new Date((body.expirationDate ?? body.ExpirationDate) as string)
+              : null
+            : existing.expirationDate,
+          deletionDate: deletionProvided
+            ? new Date((body.deletionDate ?? body.DeletionDate) as string)
+            : existing.deletionDate,
+          disabled: disabledProvided ? Boolean(body.disabled ?? body.Disabled) : existing.disabled,
+          hideEmail: hideEmailProvided ? Boolean(body.hideEmail ?? body.HideEmail) : existing.hideEmail,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(sends.uuid, id), eq(sends.userUuid, auth.user.uuid)));
 
-  if (existing.type === 1 && dataField && typeof dataField === "object") {
-    const fileData = dataField as Record<string, unknown>;
-    await db.update(sendFiles).set({
-      fileName: typeof (fileData.fileName ?? fileData.FileName) === "string"
-        ? String(fileData.fileName ?? fileData.FileName)
-        : undefined,
-      key: typeof (fileData.key ?? fileData.Key) === "string"
-        ? String(fileData.key ?? fileData.Key)
-        : undefined,
-    }).where(eq(sendFiles.sendUuid, id));
-  }
+      if (existing.type === 1 && dataField && typeof dataField === "object") {
+        const fileData = dataField as Record<string, unknown>;
+        await tx.update(sendFiles).set({
+          fileName: typeof (fileData.fileName ?? fileData.FileName) === "string"
+            ? String(fileData.fileName ?? fileData.FileName)
+            : undefined,
+          key: typeof (fileData.key ?? fileData.Key) === "string"
+            ? String(fileData.key ?? fileData.Key)
+            : undefined,
+        }).where(eq(sendFiles.sendUuid, id));
+      }
+    },
+  });
 
   const [updated] = await db.select().from(sends).where(eq(sends.uuid, id)).limit(1);
   const [file] = existing.type === 1
@@ -133,7 +143,15 @@ export async function DELETE(
   if (!send) return notFound("Send not found");
 
   const blobOutcomes = await deleteSendBlobs(id);
-  await db.delete(sends).where(eq(sends.uuid, id));
+  await commitUserMutation({
+    userUuid: auth.user.uuid,
+    resourceKind: "send",
+    resourceId: id,
+    actingDeviceIdentifier: auth.device.identifier,
+    mutate: async (tx) => {
+      await tx.delete(sends).where(and(eq(sends.uuid, id), eq(sends.userUuid, auth.user.uuid)));
+    },
+  });
   return jsonResponse({
     object: "send",
     id,
