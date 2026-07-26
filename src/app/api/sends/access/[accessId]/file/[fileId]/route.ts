@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { get } from "@vercel/blob";
 import { db } from "@/db";
 import { sendFiles } from "@/db/schema";
 import { errorResponse, jsonResponse, notFound } from "@/lib/responses";
@@ -31,7 +32,15 @@ export async function GET(
   }
   const file = await completeFile(sendUuid, fileId);
   if (!file) return notFound("File not found");
-  return NextResponse.redirect(file.blobUrl, { status: 302, headers: { "Cache-Control": "no-store, max-age=0" } });
+  const blob = await get(file.blobUrl, { access: "private", useCache: false });
+  if (!blob || blob.statusCode !== 200 || !blob.stream) return notFound("File not found");
+  const headers = new Headers({
+    "Cache-Control": "no-store, max-age=0",
+    "Content-Type": blob.blob.contentType || "application/octet-stream",
+    "Content-Length": String(blob.blob.size),
+    "Content-Disposition": "attachment",
+  });
+  return new NextResponse(blob.stream, { status: 200, headers });
 }
 
 export async function POST(

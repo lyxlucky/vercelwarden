@@ -117,7 +117,7 @@ async function legacyMultipart(request: NextRequest, userUuid: string) {
   }
   const sendUuid = newUuid();
   const fileUuid = newUuid();
-  const blob = await put(`sends/${userUuid}/${sendUuid}/${fileUuid}`, file, { access: "public", addRandomSuffix: false });
+  const blob = await put(`sends/${userUuid}/${sendUuid}/${fileUuid}`, file, { access: "private", addRandomSuffix: false });
   try {
     const inserted = await insertFileSend({ userUuid, model, metadata, sendUuid, fileUuid, status: "complete", blobUrl: blob.url });
     return NextResponse.json(serializeSend(inserted.created, inserted.file), { status: 201, headers: noStore });
@@ -200,7 +200,7 @@ export async function PUT(request: NextRequest) {
   if (payload.byteLength !== file.fileSize) return errorResponse("Send upload size does not match metadata");
   const checksum = sha256SendFile(payload);
   if (file.checksum && file.checksum !== checksum) return errorResponse("Send file checksum mismatch");
-  const blob = await put(`sends/${auth.user.uuid}/${sendUuid}/${fileUuid}`, new Blob([payload]), { access: "public", addRandomSuffix: false });
+  const blob = await put(`sends/${auth.user.uuid}/${sendUuid}/${fileUuid}`, new Blob([payload]), { access: "private", addRandomSuffix: false });
   const now = new Date();
   await db.transaction(async (tx) => {
     await tx.update(sendFiles).set({

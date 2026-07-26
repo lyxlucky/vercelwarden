@@ -1,7 +1,7 @@
 import "server-only";
 
 import { desc, eq, inArray } from "drizzle-orm";
-import { put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 import { db } from "@/db";
 import {
   accountPasskeys,
@@ -114,18 +114,24 @@ async function collectAttachmentBytes(tables: Record<string, unknown[]>): Promis
   const candidates = [
     ...(tables.attachments as Array<{ uuid: string; blobUrl: string; status: string }> ?? [])
       .filter((row) => row.status === "complete" && row.blobUrl)
-      .map((row) => ({ id: `attachment:${row.uuid}`, url: row.blobUrl })),
+      .map((row) => ({ id: `attachment:${row.uuid}`, url: row.blobUrl, access: "public" as const })),
     ...(tables.sendFiles as Array<{ uuid: string; blobUrl: string; status: string }> ?? [])
       .filter((row) => row.status === "complete" && row.blobUrl)
-      .map((row) => ({ id: `send:${row.uuid}`, url: row.blobUrl })),
+      .map((row) => ({ id: `send:${row.uuid}`, url: row.blobUrl, access: "private" as const })),
   ];
   const files: Array<{ id: string; bytes: Uint8Array }> = [];
   let failures = 0;
   for (const candidate of candidates) {
     try {
-      const response = await fetch(candidate.url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`status ${response.status}`);
-      files.push({ id: candidate.id, bytes: new Uint8Array(await response.arrayBuffer()) });
+      if (candidate.access === "private") {
+        const blob = await get(candidate.url, { access: "private", useCache: false });
+        if (!blob || blob.statusCode !== 200 || !blob.stream) throw new Error("private blob not found");
+        files.push({ id: candidate.id, bytes: new Uint8Array(await new Response(blob.stream).arrayBuffer()) });
+      } else {
+        const response = await fetch(candidate.url, { cache: "no-store" });
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        files.push({ id: candidate.id, bytes: new Uint8Array(await response.arrayBuffer()) });
+      }
     } catch {
       failures += 1;
     }
@@ -369,7 +375,7 @@ async function restoreFileObjects(
     const bytes = byId.get(`send:${row.uuid}`);
     if (!bytes) { failed += 1; continue; }
     try {
-      const blob = await put(`restored/sends/${row.uuid}`, new Blob([Uint8Array.from(bytes).buffer]), { access: "public", addRandomSuffix: false });
+      const blob = await put(`restored/sends/${row.uuid}`, new Blob([Uint8Array.from(bytes).buffer]), { access: "private", addRandomSuffix: false });
       row.blobUrl = blob.url;
       restored += 1;
     } catch { failed += 1; }

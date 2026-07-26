@@ -42,6 +42,7 @@ import {
 import { alpha } from "@mui/material/styles";
 import { BrandLockup } from "@/components/brand/BrandLogo";
 import { AppShell, type MobilePane } from "@/components/shell/AppShell";
+import { NetworkStatus } from "@/components/shell/NetworkStatus";
 import { RouteGuard } from "@/components/shell/RouteGuard";
 import { AppLink } from "@/components/theme/AppLink";
 import { TaskState } from "@/components/feedback/TaskState";
@@ -255,7 +256,7 @@ export default function VaultPage() {
             </Stack>
             <ActionGroup compact sx={{ flex: "0 0 auto", flexWrap: "nowrap" }}>
               {session.readOnly ? <Chip size="small" color="warning" variant="outlined" label="只读" sx={{ mr: 0.5 }} /> : null}
-              <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 220, display: { xs: "none", lg: "block" }, mr: 1 }}>{session.user?.email}</Typography>
+              <NetworkStatus />
               {session.user?.roles.includes("admin") ? <TopBarAction label="管理控制台" icon={<AdminPanelSettingsOutlined />} href="/admin" mobileHidden /> : null}
               <TopBarAction label="设置" icon={<SettingsOutlined />} href="/settings" mobileHidden />
               <TopBarAction label={refreshing ? "正在刷新密码库" : "刷新密码库"} icon={refreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshOutlined />} action={() => void refresh(true)} mobileHidden disabled={refreshing} />

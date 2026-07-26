@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AddOutlined from "@mui/icons-material/AddOutlined";
+import AttachFileOutlined from "@mui/icons-material/AttachFileOutlined";
 import CheckOutlined from "@mui/icons-material/CheckOutlined";
 import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import DeleteOutlineOutlined from "@mui/icons-material/DeleteOutlineOutlined";
@@ -10,6 +11,7 @@ import EditOutlined from "@mui/icons-material/EditOutlined";
 import SendOutlined from "@mui/icons-material/SendOutlined";
 import {
   Box,
+  Alert,
   Button,
   Card,
   CardContent,
@@ -66,6 +68,7 @@ export default function SendsPage() {
   const [progress, setProgress] = useState<SendTransferProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [partial, setPartial] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const selectedItems = useMemo(() => items.filter((item) => selected.has(item.id)), [items, selected]);
 
   const refresh = async () => {
@@ -96,6 +99,7 @@ export default function SendsPage() {
     setDisabled(false);
     setHideEmail(false);
     setProgress(null);
+    setFormError(null);
   };
 
   const edit = (item: SendView) => {
@@ -112,6 +116,7 @@ export default function SendsPage() {
   const submit = async () => {
     setBusy(true);
     setError(null);
+    setFormError(null);
     setPartial(null);
     try {
       if (editing) {
@@ -126,7 +131,7 @@ export default function SendsPage() {
       setOpen(false);
       reset();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Send 操作失败。");
+      setFormError(nextError instanceof Error ? nextError.message : "Send 操作失败。");
     } finally {
       setBusy(false);
     }
@@ -162,6 +167,18 @@ export default function SendsPage() {
   };
 
   const valid = Boolean(name.trim()) && (Boolean(editing) || (type === "text" ? Boolean(text) : Boolean(file)));
+  const formatFileSize = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  };
+  const progressLabel: Record<SendTransferProgress["phase"], string> = {
+    encrypting: "正在加密",
+    uploading: "正在上传",
+    downloading: "正在下载",
+    decrypting: "正在解密",
+    complete: "已完成",
+  };
   return (
     <RouteGuard>
       <ToolPageShell
@@ -210,7 +227,14 @@ export default function SendsPage() {
               {!editing ? (
                 <FormControl>
                   <InputLabel id="send-type-label">类型</InputLabel>
-                  <Select labelId="send-type-label" label="类型" value={type} onChange={(event) => setType(event.target.value as "text" | "file")}>
+                  <Select labelId="send-type-label" label="类型" value={type} onChange={(event) => {
+                    const nextType = event.target.value as "text" | "file";
+                    setType(nextType);
+                    setFile(null);
+                    setText("");
+                    setProgress(null);
+                    setFormError(null);
+                  }}>
                     <MenuItem value="text">文本</MenuItem>
                     <MenuItem value="file">文件</MenuItem>
                   </Select>
@@ -221,10 +245,36 @@ export default function SendsPage() {
               {!editing ? <TextField label="访问密码（可选）" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /> : null}
               <TextField label="最大访问次数（可选）" type="number" slotProps={{ htmlInput: { min: 1 } }} value={maxAccessCount} onChange={(event) => setMaxAccessCount(event.target.value)} />
               {!editing && type === "text" ? <TextField label="分享文本" multiline minRows={5} value={text} onChange={(event) => setText(event.target.value)} /> : null}
-              {!editing && type === "file" ? <TextField label="分享文件" type="file" slotProps={{ inputLabel: { shrink: true } }} onChange={(event) => setFile((event.target as HTMLInputElement).files?.[0] ?? null)} /> : null}
+              {!editing && type === "file" ? (
+                <Box>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<AttachFileOutlined />}
+                    sx={{ minHeight: 44, cursor: "pointer" }}
+                  >
+                    {file ? "更换文件" : "选择文件"}
+                    <input
+                      hidden
+                      type="file"
+                      aria-label="选择分享文件"
+                      onClick={(event) => { event.currentTarget.value = ""; }}
+                      onChange={(event) => {
+                        setFile(event.currentTarget.files?.[0] ?? null);
+                        setProgress(null);
+                        setFormError(null);
+                      }}
+                    />
+                  </Button>
+                  <Typography id="send-file-summary" variant="body2" color="text.secondary" sx={{ mt: 1 }} aria-live="polite">
+                    {file ? <><Box component="span" sx={{ color: "text.primary", fontWeight: 600 }}>{file.name}</Box> · {formatFileSize(file.size)}</> : "请选择不超过 100 MB 的文件。文件会先在浏览器中加密。"}
+                  </Typography>
+                </Box>
+              ) : null}
               <FormControlLabel control={<Checkbox checked={disabled} onChange={(event) => setDisabled(event.target.checked)} />} label="暂停访问" />
               <FormControlLabel control={<Checkbox checked={hideEmail} onChange={(event) => setHideEmail(event.target.checked)} />} label="隐藏创建者邮箱" />
-              {progress ? <Box aria-live="polite"><Typography variant="body2">{progress.phase}：{progress.percent}%</Typography><LinearProgress variant="determinate" value={progress.percent} /></Box> : null}
+              {formError ? <Alert severity="error" role="alert">{formError}</Alert> : null}
+              {progress ? <Box aria-live="polite"><Typography variant="body2">{progressLabel[progress.phase]}：{progress.percent}%</Typography><LinearProgress variant="determinate" value={progress.percent} /></Box> : null}
             </Stack>
           </DialogContent>
           <DialogActions>

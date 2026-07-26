@@ -169,7 +169,18 @@ export async function createTextSend(input: CreateSendInput & { text: string }) 
   }
 }
 
-function uploadFile(url: string, bytes: ArrayBuffer, headers: Record<string, string>, onProgress?: (progress: SendTransferProgress) => void) {
+function uploadErrorMessage(request: XMLHttpRequest) {
+  const fallback = `Send 文件上传失败（${request.status}）。`;
+  if (!request.responseText) return fallback;
+  try {
+    const body = JSON.parse(request.responseText) as { message?: unknown };
+    return typeof body.message === "string" && body.message.trim() ? body.message : fallback;
+  } catch {
+    return request.responseText.trim() || fallback;
+  }
+}
+
+function uploadFile(url: string, bytes: Uint8Array<ArrayBuffer>, headers: Record<string, string>, onProgress?: (progress: SendTransferProgress) => void) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);
@@ -179,9 +190,10 @@ function uploadFile(url: string, bytes: ArrayBuffer, headers: Record<string, str
     for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
     request.upload.onprogress = (event) => report(onProgress, "uploading", event.loaded, event.total || bytes.byteLength);
     request.onerror = () => reject(new Error("Send 文件上传中断，请重试。"));
+    request.onabort = () => reject(new Error("Send 文件上传已取消。"));
     request.onload = () => request.status >= 200 && request.status < 300
       ? resolve()
-      : reject(new Error(`Send 文件上传失败（${request.status}）。`));
+      : reject(new Error(uploadErrorMessage(request)));
     request.send(bytes);
   });
 }
@@ -191,13 +203,15 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
   if (!vaultKey) throw new Error("Vault key unavailable.");
   const sendKeyMaterial = crypto.getRandomValues(new Uint8Array(16));
   let contentKey: Uint8Array | undefined;
+  let encryptedBytes: Uint8Array<ArrayBuffer> | undefined;
+  let pendingSendId: string | undefined;
   try {
     contentKey = await deriveSendContentKey(sendKeyMaterial);
     report(onProgress, "encrypting", 0, input.file.size);
     const plaintext = new Uint8Array(await input.file.arrayBuffer());
     const encrypted = await encryptWithUserKey(plaintext, contentKey);
     plaintext.fill(0);
-    const encryptedBytes = new TextEncoder().encode(encrypted);
+    encryptedBytes = new TextEncoder().encode(encrypted);
     const encryptedName = await encryptWithUserKey(new TextEncoder().encode(input.file.name), contentKey);
     const checksum = await sha256Hex(encryptedBytes);
     report(onProgress, "encrypting", input.file.size, input.file.size);
@@ -210,16 +224,22 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
         file: { fileName: encryptedName, size: encryptedBytes.byteLength, checksum, key: null },
       },
     });
-    await uploadFile(pending.uploadUrl, encryptedBytes.buffer, {
+    pendingSendId = pending.sendId;
+    await uploadFile(pending.uploadUrl, encryptedBytes, {
       "X-Send-Id": pending.sendId,
       "X-File-Id": pending.fileId,
       "X-Upload-Token": pending.uploadToken,
     }, onProgress);
-    wipeBytes(encryptedBytes);
     report(onProgress, "complete", input.file.size, input.file.size);
     const sends = await listSends();
     return sends.find((send) => send.id === pending.sendId) ?? decryptSend(pending.send, vaultKey);
+  } catch (error) {
+    if (pendingSendId) {
+      await apiClient(`/api/sends/${encodeURIComponent(pendingSendId)}`, { method: "DELETE" }).catch(() => undefined);
+    }
+    throw error;
   } finally {
+    wipeBytes(encryptedBytes);
     wipeBytes(contentKey);
     wipeBytes(sendKeyMaterial);
     wipeBytes(vaultKey);
