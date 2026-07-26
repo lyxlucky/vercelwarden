@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "vercelwarden-shell-";
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const PRECACHE_URLS = [
   "/",
@@ -7,6 +7,7 @@ const PRECACHE_URLS = [
   "/lock",
   "/vault",
   "/manifest.webmanifest",
+  "/brand/logo-mark.svg",
   "/pwa/icon-192.svg",
   "/pwa/icon-512.svg",
   "/pwa/maskable-512.svg",
@@ -24,6 +25,7 @@ function mustBypass(request, url) {
 function isImmutableAsset(url) {
   return url.origin === self.location.origin && (
     url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/brand/") ||
     url.pathname.startsWith("/pwa/") ||
     url.pathname === "/manifest.webmanifest"
   );
