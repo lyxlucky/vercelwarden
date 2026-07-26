@@ -137,7 +137,7 @@ export async function verifyAuth(authHeader: string | null): Promise<AuthResult 
 // Wire format is fully camelCase. Field set matches User::to_json in
 // db/models/user.rs so newer Bitwarden clients can parse it.
 export function buildProfile(user: typeof users.$inferSelect) {
-  const status = (user.passwordHash as Uint8Array).length === 0 ? 0 : 2; // Invited=0, Enabled=2
+  const status = ((user.passwordHash as Uint8Array | null)?.length ?? 0) === 0 ? 0 : 2; // Invited=0, Enabled=2
   return {
     _status: status,
     id: user.uuid,
