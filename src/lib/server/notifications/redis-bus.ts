@@ -65,8 +65,10 @@ interface LocalSubscription {
 
 export class RedisNotificationBus implements NotificationBus {
   readonly kind = "redis" as const;
+  private readonly url: string;
+  private readonly factory: RedisClientFactory;
   private readonly publisher: RedisPubSubClient;
-  private readonly subscriber: RedisPubSubClient;
+  private subscriber: RedisPubSubClient | null = null;
   private readonly subscriptions = new Map<string, LocalSubscription>();
   private readonly maxHistoryEntries: number;
   private readonly historyTtlSeconds: number;
@@ -80,13 +82,24 @@ export class RedisNotificationBus implements NotificationBus {
     options: RedisNotificationBusOptions = {}
   ) {
     if (!url.trim()) throw new Error("A Redis Pub/Sub URL is required.");
+    this.url = url;
+    this.factory = factory;
+    // The publisher is needed on every instance — to publish, and to read the
+    // replay history. The subscriber is created lazily on the first subscribe()
+    // so publish-only instances never open an idle subscriber connection.
     this.publisher = factory(url, "publisher");
-    this.subscriber = factory(url, "subscriber");
-    this.subscriber.on("message", this.onMessage);
     this.maxHistoryEntries = options.maxHistoryEntries ?? DEFAULT_MAX_HISTORY_ENTRIES;
     this.historyTtlSeconds = options.historyTtlSeconds ?? DEFAULT_HISTORY_TTL_SECONDS;
     this.replayWindowMs = options.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
     this.now = options.now ?? (() => Date.now());
+  }
+
+  private ensureSubscriber(): RedisPubSubClient {
+    if (!this.subscriber) {
+      this.subscriber = this.factory(this.url, "subscriber");
+      this.subscriber.on("message", this.onMessage);
+    }
+    return this.subscriber;
   }
 
   async publish(event: NormalizedNotificationEvent): Promise<void> {
@@ -119,7 +132,7 @@ export class RedisNotificationBus implements NotificationBus {
       subscription = { listeners: new Set(), lastSequenceByListener: new Map() };
       this.subscriptions.set(channel, subscription);
       try {
-        await this.subscriber.subscribe(channel);
+        await this.ensureSubscriber().subscribe(channel);
       } catch (error) {
         this.subscriptions.delete(channel);
         throw error;
@@ -138,7 +151,7 @@ export class RedisNotificationBus implements NotificationBus {
       current.lastSequenceByListener.delete(listener);
       if (current.listeners.size === 0) {
         this.subscriptions.delete(channel);
-        await this.subscriber.unsubscribe(channel);
+        await this.subscriber?.unsubscribe(channel);
       }
     };
     // Catch up on events published during the subscribe-boundary race or a brief
@@ -149,20 +162,23 @@ export class RedisNotificationBus implements NotificationBus {
   }
 
   async health(): Promise<NotificationBusHealth> {
+    const subscriber = this.subscriber;
     try {
-      await Promise.all([this.publisher.ping(), this.subscriber.ping()]);
+      const pings = [this.publisher.ping()];
+      if (subscriber) pings.push(subscriber.ping());
+      await Promise.all(pings);
       return {
         kind: this.kind,
         ready: true,
         publisher: this.publisher.status ?? "ready",
-        subscriber: this.subscriber.status ?? "ready",
+        subscriber: subscriber ? (subscriber.status ?? "ready") : "idle",
       };
     } catch {
       return {
         kind: this.kind,
         ready: false,
         publisher: this.publisher.status ?? "unavailable",
-        subscriber: this.subscriber.status ?? "unavailable",
+        subscriber: subscriber ? (subscriber.status ?? "unavailable") : "idle",
       };
     }
   }
@@ -170,9 +186,11 @@ export class RedisNotificationBus implements NotificationBus {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    this.subscriber.off("message", this.onMessage);
+    this.subscriber?.off("message", this.onMessage);
     this.subscriptions.clear();
-    await Promise.allSettled([this.subscriber.quit(), this.publisher.quit()]);
+    const shutdowns = [this.publisher.quit()];
+    if (this.subscriber) shutdowns.push(this.subscriber.quit());
+    await Promise.allSettled(shutdowns);
   }
 
   private dispatch(
