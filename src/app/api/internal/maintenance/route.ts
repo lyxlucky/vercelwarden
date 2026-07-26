@@ -14,15 +14,20 @@ import {
 } from "@/db/schema";
 import { applyAuditRetention } from "@/lib/server/audit/service";
 import { deleteBackupArtifact } from "@/lib/server/backup/jobs";
+import { cleanupExpiredPendingSendFiles } from "@/lib/server/sends/service";
 import { ApiError, apiErrorResponse } from "@/lib/server/http/errors";
 
 function authorizeMaintenance(request: Request): void {
-  const expected = process.env.MAINTENANCE_CRON_SECRET ?? process.env.BACKUP_CRON_SECRET;
-  if (!expected || expected.length < 16) throw new ApiError(503, "maintenance_unconfigured", "Maintenance authentication is not configured.");
+  // Accept MAINTENANCE_CRON_SECRET (primary), BACKUP_CRON_SECRET (legacy), or
+  // CRON_SECRET (auto-injected by Vercel Cron as `Authorization: Bearer …`).
+  const secrets = [process.env.MAINTENANCE_CRON_SECRET, process.env.BACKUP_CRON_SECRET, process.env.CRON_SECRET]
+    .filter((value): value is string => typeof value === "string" && value.length >= 16);
+  if (secrets.length === 0) throw new ApiError(503, "maintenance_unconfigured", "Maintenance authentication is not configured.");
   const presented = request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "") ?? "";
-  const left = createHash("sha256").update(presented).digest();
-  const right = createHash("sha256").update(expected).digest();
-  if (!presented || !timingSafeEqual(left, right)) throw new ApiError(401, "unauthorized", "Maintenance authentication is required.");
+  if (!presented) throw new ApiError(401, "unauthorized", "Maintenance authentication is required.");
+  const presentedHash = createHash("sha256").update(presented).digest();
+  const authorized = secrets.some((secret) => timingSafeEqual(presentedHash, createHash("sha256").update(secret).digest()));
+  if (!authorized) throw new ApiError(401, "unauthorized", "Maintenance authentication is required.");
 }
 
 async function deleteBlobUrls(urls: string[]): Promise<number> {
@@ -47,11 +52,7 @@ export async function POST(request: Request) {
     if (pendingAttachments.length) await db.delete(attachments)
       .where(and(eq(attachments.status, "pending"), lt(attachments.uploadExpiresAt, now)));
 
-    const pendingSendFiles = await db.select({ id: sendFiles.uuid, blobUrl: sendFiles.blobUrl }).from(sendFiles)
-      .where(and(eq(sendFiles.status, "pending"), lt(sendFiles.uploadExpiresAt, now)));
-    await deleteBlobUrls(pendingSendFiles.map((item) => item.blobUrl));
-    if (pendingSendFiles.length) await db.delete(sendFiles)
-      .where(and(eq(sendFiles.status, "pending"), lt(sendFiles.uploadExpiresAt, now)));
+    const pendingSendFilesRemoved = await cleanupExpiredPendingSendFiles(now);
 
     const expiredSends = await db.select({ id: sends.uuid }).from(sends).where(lt(sends.deletionDate, now));
     const expiredSendFiles = expiredSends.length
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
       object: "maintenanceResult",
       expiredAuthRequests: expiredRequests.length,
       pendingAttachments: pendingAttachments.length,
-      pendingSendFiles: pendingSendFiles.length,
+      pendingSendFiles: pendingSendFilesRemoved,
       expiredSends: expiredSends.length,
       auditEvents,
       backupArtifacts: backupArtifactsRemoved,
@@ -93,4 +94,9 @@ export async function POST(request: Request) {
   } catch (error) {
     return apiErrorResponse(error);
   }
+}
+
+// Vercel Cron invokes scheduled paths via GET; delegate to the same routine.
+export function GET(request: Request) {
+  return POST(request);
 }
