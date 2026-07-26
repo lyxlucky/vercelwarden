@@ -10,10 +10,11 @@ import { TaskState } from "@/components/feedback/TaskState";
 import type { VaultItemView } from "@/features/vault/store";
 import { VaultItemAvatar, vaultTypeLabel } from "@/features/vault/VaultVisuals";
 
-export function VaultList({ items, selectedId, checkedIds, onSelect, onToggle }: {
+export function VaultList({ items, selectedId, checkedIds, selectionMode, onSelect, onToggle }: {
   items: VaultItemView[];
   selectedId: string | null;
   checkedIds: ReadonlySet<string>;
+  selectionMode: boolean;
   onSelect(item: VaultItemView): void;
   onToggle(id: string): void;
 }) {
@@ -23,7 +24,7 @@ export function VaultList({ items, selectedId, checkedIds, onSelect, onToggle }:
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 76,
+    estimateSize: () => 72,
     overscan: 8,
   });
 
@@ -32,7 +33,7 @@ export function VaultList({ items, selectedId, checkedIds, onSelect, onToggle }:
   }
 
   return (
-    <Box ref={scrollRef} data-vault-scroll role="list" aria-label="密码库项目" sx={{ minHeight: 0, flex: 1, overflow: "auto", position: "relative", px: 0.5 }}>
+    <Box ref={scrollRef} data-vault-scroll role="list" aria-label="密码库项目" sx={{ minHeight: 0, flex: 1, overflow: "auto", position: "relative" }}>
       <Box sx={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((row) => {
           const item = items[row.index]!;
@@ -45,35 +46,41 @@ export function VaultList({ items, selectedId, checkedIds, onSelect, onToggle }:
               data-index={row.index}
               data-vault-row
               data-selected={selected || undefined}
-              sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)`, display: "flex", alignItems: "center", px: 0.5, py: 0.25 }}
+              sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)`, px: 1 }}
             >
-              <Checkbox
-                checked={checked}
-                size="small"
-                slotProps={{ input: { "aria-label": `${checked ? "取消选择" : "选择"} ${item.name}` } }}
-                onChange={() => onToggle(item.id)}
-                sx={{ flex: "0 0 auto", p: 1 }}
-              />
               <ListItemButton
-                component="button"
-                selected={selected}
-                onClick={() => onSelect(item)}
+                selected={selectionMode ? checked : selected}
+                onClick={() => selectionMode ? onToggle(item.id) : onSelect(item)}
                 aria-label={`${item.name} ${item.username || ""}`.trim()}
+                aria-pressed={selectionMode ? checked : undefined}
                 sx={{
                   minWidth: 0,
-                  minHeight: 68,
-                  borderRadius: 3,
-                  px: 1.25,
-                  py: 0.75,
+                  minHeight: 72,
+                  borderRadius: 0,
+                  px: 1,
+                  py: 0.5,
+                  borderBottom: 1,
+                  borderColor: "divider",
                   transition: (theme) => theme.transitions.create(["background-color", "box-shadow"]),
                   "&.Mui-selected": {
                     bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.2 : 0.11),
+                    boxShadow: "inset 3px 0 0 currentColor",
                     "&:hover": { bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.25 : 0.15) },
                   },
                   "&.Mui-focusVisible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
                 }}
               >
-                <Box sx={{ mr: 1.5, flex: "0 0 auto" }}><VaultItemAvatar type={item.type} /></Box>
+                <Box sx={{ width: 44, mr: 1, flex: "0 0 auto", display: "grid", placeItems: "center" }}>
+                  {selectionMode ? (
+                    <Checkbox
+                      checked={checked}
+                      size="small"
+                      slotProps={{ input: { "aria-label": `${checked ? "取消选择" : "选择"} ${item.name}` } }}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => onToggle(item.id)}
+                    />
+                  ) : <VaultItemAvatar type={item.type} />}
+                </Box>
                 <ListItemText
                   primary={item.name}
                   secondary={item.username || item.uris[0] || vaultTypeLabel(item.type)}

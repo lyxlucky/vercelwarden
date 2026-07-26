@@ -131,7 +131,7 @@ export function VaultEditor({ open, item, folders, onOpenChange, onSaved }: { op
         fullScreen={fullScreen}
         maxWidth="lg"
         aria-labelledby="vault-editor-title"
-        slotProps={{ paper: { sx: { height: { sm: "min(92dvh, 940px)" }, borderRadius: { xs: 0, sm: 4 }, overflow: "hidden" } } }}
+        slotProps={{ paper: { sx: { height: { sm: "min(92dvh, 940px)" }, borderRadius: { xs: 0, sm: "6px" }, overflow: "hidden" } } }}
       >
         {busy ? <LinearProgress aria-label="正在处理" /> : null}
         <DialogTitle sx={{ px: { xs: 2, sm: 3 }, py: 2, borderBottom: 1, borderColor: "divider" }}>
@@ -173,7 +173,7 @@ export function VaultEditor({ open, item, folders, onOpenChange, onSaved }: { op
             >
               {draft.fields.length === 0 ? <Typography color="text.secondary" variant="body2">尚未添加自定义字段。</Typography> : (
                 <Stack spacing={1.5}>{draft.fields.map((field, index) => (
-                  <Paper key={index} variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                  <Paper key={index} variant="outlined" sx={{ p: 1.5, borderRadius: 0 }}>
                     <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.5 }}>
                       <Typography variant="subtitle2">字段 {index + 1}</Typography>
                       <Stack direction="row">
@@ -199,7 +199,7 @@ export function VaultEditor({ open, item, folders, onOpenChange, onSaved }: { op
             >
               {!item ? <Typography color="text.secondary" variant="body2">先保存项目，再添加加密附件。</Typography> : attachments.length === 0 ? <Typography color="text.secondary" variant="body2">尚未添加附件。</Typography> : (
                 <Stack spacing={1}>{attachments.map((attachment) => (
-                  <Paper variant="outlined" sx={{ p: 1.25, display: "flex", alignItems: "center", gap: 1, borderRadius: 2.5 }} key={attachment.id}>
+                  <Paper variant="outlined" sx={{ p: 1.25, display: "flex", alignItems: "center", gap: 1, borderRadius: 0 }} key={attachment.id}>
                     <Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 650 }}>{attachment.fileName}</Typography><Typography variant="body2" color="text.secondary">{attachment.size.toLocaleString()} bytes</Typography></Box>
                     <Tooltip title={`下载 ${attachment.fileName}`}><span><IconButton aria-label={`下载 ${attachment.fileName}`} disabled={busy} onClick={() => void downloadEncryptedAttachment(item.id, attachment, setTransfer)}><DownloadOutlined /></IconButton></span></Tooltip>
                     <Tooltip title={`移除 ${attachment.fileName}`}><span><IconButton aria-label={`移除 ${attachment.fileName}`} color="error" disabled={busy} onClick={async () => { setBusy(true); try { const snapshot = await removeAttachment(item.id, attachment.id); setAttachments(snapshot.items.find((entry) => entry.id === item.id)?.attachments ?? []); } finally { setBusy(false); } }}><DeleteOutlineOutlined /></IconButton></span></Tooltip>

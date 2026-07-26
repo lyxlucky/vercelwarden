@@ -43,7 +43,7 @@ export const theme = createTheme({
     h2: { fontSize: "1.25rem", fontWeight: 700, lineHeight: 1.3 },
     button: { fontWeight: 650, textTransform: "none" },
   },
-  shape: { borderRadius: 10 },
+  shape: { borderRadius: 4 },
   spacing: 8,
   transitions: {
     easing: {
@@ -80,7 +80,7 @@ export const theme = createTheme({
       styleOverrides: {
         root: ({ theme: muiTheme }) => ({
           minHeight: 44,
-          borderRadius: 10,
+          borderRadius: 4,
           paddingInline: 18,
           transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease",
           "&.Mui-focusVisible": {
@@ -95,7 +95,7 @@ export const theme = createTheme({
     MuiIconButton: {
       styleOverrides: {
         root: ({ theme: muiTheme }) => ({
-          borderRadius: 10,
+          borderRadius: 4,
           "&.Mui-focusVisible": {
             outline: `3px solid ${muiTheme.palette.primary.main}38`,
             outlineOffset: 2,
@@ -108,7 +108,7 @@ export const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: ({ theme: muiTheme }) => ({
-          borderRadius: 10,
+          borderRadius: 4,
           backgroundColor: "#ffffff",
           transition: "background-color 180ms ease, box-shadow 180ms ease",
           "&:not(.MuiInputBase-multiline)": { minHeight: 52 },
@@ -175,17 +175,22 @@ export const theme = createTheme({
     MuiCard: {
       styleOverrides: {
         root: ({ theme: muiTheme }) => ({
-          borderRadius: 16,
+          borderRadius: 4,
           boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
           transition: muiTheme.transitions.create(["border-color", "box-shadow", "background-color"], { duration: muiTheme.transitions.duration.short }),
           ...muiTheme.applyStyles("dark", { boxShadow: "0 1px 2px rgba(0, 0, 0, 0.24)" }),
         }),
       },
     },
-    MuiDialog: { defaultProps: { fullWidth: true, maxWidth: "sm" } },
+    MuiDialog: {
+      defaultProps: { fullWidth: true, maxWidth: "sm" },
+      styleOverrides: { paper: { borderRadius: 8 } },
+    },
     MuiDialogTitle: { styleOverrides: { root: { fontSize: "1.125rem", fontWeight: 700 } } },
     MuiTooltip: { defaultProps: { arrow: true } },
     MuiLink: { defaultProps: { underline: "hover" } },
-    MuiAlert: { styleOverrides: { root: { alignItems: "center", borderRadius: 10 } } },
+    MuiAlert: { styleOverrides: { root: { alignItems: "center", borderRadius: 4 } } },
+    MuiChip: { styleOverrides: { root: { borderRadius: 4 } } },
+    MuiToggleButton: { styleOverrides: { root: { borderRadius: "4px !important" } } },
   },
 });

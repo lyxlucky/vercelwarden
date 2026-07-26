@@ -49,7 +49,7 @@ function LoginEditor({ draft, onPayloadChange }: EditorProps) {
       <Box sx={{ gridColumn: "1 / -1" }}>
         <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1 }}><Typography component="h4" variant="subtitle1">网站地址</Typography><Button size="small" startIcon={<AddOutlined />} onClick={() => onPayloadChange({ ...payload, uris: [...uris, { uri: "", match: null }] })}>添加地址</Button></Stack>
         {uris.length === 0 ? <Typography color="text.secondary" variant="body2">尚未添加网站地址。</Typography> : <Stack spacing={1}>{uris.map((uri, index) => (
-          <Paper key={index} variant="outlined" sx={{ p: 1.25, display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr) auto", sm: "minmax(0, 1fr) 180px auto" }, gap: 1, borderRadius: 2.5 }}>
+          <Paper key={index} variant="outlined" sx={{ p: 1.25, display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr) auto", sm: "minmax(0, 1fr) 180px auto" }, gap: 1, borderRadius: 0 }}>
             <TextField label={`网站地址 ${index + 1}`} value={uri.uri} onChange={(event) => updateUri(index, { uri: event.target.value })} />
             <FormControl sx={{ gridColumn: { xs: "1", sm: "auto" } }}><InputLabel id={`match-${index}`}>匹配规则 {index + 1}</InputLabel><Select labelId={`match-${index}`} label={`匹配规则 ${index + 1}`} value={uri.match == null ? "" : String(uri.match)} onChange={(event) => updateUri(index, { match: event.target.value ? Number(event.target.value) : null })}>
               <MenuItem value="">默认匹配</MenuItem><MenuItem value="0">域名</MenuItem><MenuItem value="1">主机</MenuItem><MenuItem value="2">开头</MenuItem><MenuItem value="3">完全匹配</MenuItem><MenuItem value="4">正则</MenuItem><MenuItem value="5">永不匹配</MenuItem>

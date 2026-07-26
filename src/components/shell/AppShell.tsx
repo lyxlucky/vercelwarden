@@ -64,7 +64,7 @@ export function AppShell({
         open={mobilePane === "navigation"}
         onClose={onMobileBack}
         ModalProps={{ keepMounted: true }}
-        slotProps={{ paper: { sx: { width: "min(88vw, 336px)", borderTopRightRadius: 4, borderBottomRightRadius: 4, bgcolor: "background.default" } } }}
+        slotProps={{ paper: { sx: { width: "min(88vw, 336px)", borderRadius: 0, bgcolor: "background.default" } } }}
         sx={{ display: { xs: "block", md: "none" } }}
       >
         {navigation}

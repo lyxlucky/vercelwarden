@@ -2,13 +2,17 @@
 
 import { useState, type ReactNode } from "react";
 import {
+  ArchiveOutlined,
   CheckOutlined,
   ContentCopyOutlined,
+  DeleteOutlineOutlined,
   EditOutlined,
+  FavoriteBorderOutlined,
   FavoriteOutlined,
   HistoryOutlined,
   InsertDriveFileOutlined,
   OpenInNewOutlined,
+  RestoreOutlined,
   ScheduleOutlined,
   VisibilityOffOutlined,
   VisibilityOutlined,
@@ -26,6 +30,10 @@ import {
   Divider,
   IconButton,
   Link,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
@@ -58,7 +66,9 @@ function FieldRow({ label, value, actions, mono = false }: { label: string; valu
         gap: 1.5,
         px: 2,
         py: 1,
-        borderRadius: 2.5,
+        borderRadius: 0,
+        borderLeft: 3,
+        borderColor: "divider",
         bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.055 : 0.035),
       }}
     >
@@ -71,7 +81,13 @@ function FieldRow({ label, value, actions, mono = false }: { label: string; valu
   );
 }
 
-export function VaultDetail({ item, onEdit }: { item: VaultItemView | null; onEdit?(item: VaultItemView): void }) {
+export type VaultDetailAction = "favorite" | "archive" | "unarchive" | "trash" | "restore" | "permanent";
+
+export function VaultDetail({ item, onEdit, onAction }: {
+  item: VaultItemView | null;
+  onEdit?(item: VaultItemView): void;
+  onAction?(action: VaultDetailAction, item: VaultItemView): void;
+}) {
   const [visible, setVisible] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -79,6 +95,7 @@ export function VaultDetail({ item, onEdit }: { item: VaultItemView | null; onEd
   const [repromptPassword, setRepromptPassword] = useState("");
   const [repromptError, setRepromptError] = useState<string | null>(null);
   const [repromptBusy, setRepromptBusy] = useState(false);
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null);
 
   if (!item) {
     return (
@@ -143,7 +160,7 @@ export function VaultDetail({ item, onEdit }: { item: VaultItemView | null; onEd
     <>
       <Box component="article" sx={{ width: "100%", maxWidth: 960, mx: "auto", px: { xs: 2, sm: 3, lg: 4 }, py: { xs: 1.5, sm: 3 } }}>
         <Stack spacing={2.5}>
-          <Stack component="header" direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "stretch", sm: "center" }, justifyContent: "space-between", gap: 2, py: { xs: 1, sm: 1.5 } }}>
+          <Stack component="header" direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "stretch", sm: "center" }, justifyContent: "space-between", gap: 2, py: { xs: 1, sm: 1.5 }, borderBottom: 1, borderColor: "divider", pb: 2.5 }}>
             <Stack direction="row" sx={{ alignItems: "center", gap: 2, minWidth: 0 }}>
               <VaultItemAvatar type={item.type} size={56} />
               <Box sx={{ minWidth: 0 }}>
@@ -154,8 +171,30 @@ export function VaultDetail({ item, onEdit }: { item: VaultItemView | null; onEd
                 <Typography color="text.secondary" sx={{ mt: 0.5 }}>{vaultTypeLabel(item.type)}</Typography>
               </Box>
             </Stack>
-            <Button variant="contained" startIcon={<EditOutlined />} disabled={!onEdit} onClick={() => onEdit?.(item)} sx={{ alignSelf: { xs: "stretch", sm: "center" } }}>编辑项目</Button>
+            <Stack direction="row" sx={{ alignSelf: { xs: "stretch", sm: "center" }, gap: 1, flexWrap: "wrap" }}>
+              {item.deletedAt ? (
+                <>
+                  <Button variant="contained" startIcon={<RestoreOutlined />} onClick={() => onAction?.("restore", item)}>恢复项目</Button>
+                  <Button variant="outlined" color="error" startIcon={<DeleteOutlineOutlined />} onClick={() => onAction?.("permanent", item)}>永久删除</Button>
+                </>
+              ) : (
+                <>
+                  {item.archivedAt ? <Button variant="outlined" startIcon={<RestoreOutlined />} onClick={() => onAction?.("unarchive", item)}>取消归档</Button> : null}
+                  <Button variant="contained" startIcon={<EditOutlined />} disabled={!onEdit} onClick={() => onEdit?.(item)}>编辑项目</Button>
+                  <Button variant="outlined" color="error" startIcon={<DeleteOutlineOutlined />} onClick={() => onAction?.("trash", item)}>移入回收站</Button>
+                  <Button variant="text" aria-label="更多项目操作" onClick={(event) => setActionAnchor(event.currentTarget)}>更多</Button>
+                </>
+              )}
+            </Stack>
           </Stack>
+
+          <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={() => setActionAnchor(null)}>
+            <MenuItem onClick={() => { setActionAnchor(null); onAction?.("favorite", item); }}>
+              <ListItemIcon>{item.favorite ? <FavoriteOutlined fontSize="small" /> : <FavoriteBorderOutlined fontSize="small" />}</ListItemIcon>
+              <ListItemText>{item.favorite ? "取消收藏" : "收藏"}</ListItemText>
+            </MenuItem>
+            {!item.archivedAt ? <MenuItem onClick={() => { setActionAnchor(null); onAction?.("archive", item); }}><ListItemIcon><ArchiveOutlined fontSize="small" /></ListItemIcon><ListItemText>归档</ListItemText></MenuItem> : null}
+          </Menu>
 
           {copyError ? <Alert severity="warning" onClose={() => setCopyError(null)}>{copyError}</Alert> : null}
 

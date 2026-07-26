@@ -71,10 +71,12 @@ const itemSx = {
   mx: 1.5,
   my: 0.25,
   px: 1.5,
-  borderRadius: 6,
+  borderRadius: 0,
+  borderLeft: "3px solid transparent",
   "&.Mui-selected": {
     bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12),
     color: "primary.main",
+    borderLeftColor: "primary.main",
     "&:hover": { bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.27 : 0.16) },
     "& .MuiListItemIcon-root": { color: "primary.main" },
   },

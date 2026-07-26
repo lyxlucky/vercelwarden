@@ -66,7 +66,7 @@ export function FolderManagerDialog({ open, folders, onOpenChange, onCreate, onR
         <DialogTitle>管理文件夹</DialogTitle>
         <DialogContent dividers>
           <DialogContentText sx={{ mb: 2.5 }}>文件夹只用于整理项目。删除文件夹不会删除其中的密码库内容。</DialogContentText>
-          <Box sx={{ p: 2, borderRadius: 3, bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.06), mb: 2.5 }}>
+          <Box sx={{ p: 2, borderRadius: 0, borderLeft: 3, borderColor: "primary.main", bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.06), mb: 2.5 }}>
             <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1, alignItems: "flex-start" }}>
               <TextField autoFocus label={editing ? "新文件夹名称" : "文件夹名称"} value={name} placeholder={editing ? "输入新名称" : "新建文件夹"} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void submit(); }} />
               <Button variant="contained" startIcon={editing ? <EditOutlined /> : <AddOutlined />} disabled={!name.trim() || busy} onClick={() => void submit()} sx={{ flexShrink: 0 }}>{editing ? "保存" : "新建"}</Button>
@@ -86,7 +86,7 @@ export function FolderManagerDialog({ open, folders, onOpenChange, onCreate, onR
                     <Tooltip title={`删除 ${folder.name}`}><IconButton aria-label={`删除 ${folder.name}`} color="error" onClick={() => setPendingDelete(folder)}><DeleteOutlineOutlined /></IconButton></Tooltip>
                   </Stack>
                 )}
-                sx={{ mb: 0.75, border: 1, borderColor: "divider", borderRadius: 2.5 }}
+                sx={{ mb: 0.75, border: 1, borderColor: "divider", borderRadius: 0 }}
               >
                 <ListItemAvatar><Avatar sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: "primary.main" }}><FolderOutlined /></Avatar></ListItemAvatar>
                 <ListItemText primary={folder.name} secondary="密码库文件夹" />
