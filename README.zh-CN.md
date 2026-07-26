@@ -1,172 +1,131 @@
-# Vercelwarden
+<div align="center">
+  <img src="./public/brand/logo-mark.svg" width="104" height="104" alt="VercelWarden 项目 Logo" />
 
-[English](./README.md) · [简体中文](./README.zh-CN.md)
+  # VercelWarden
 
-部署在 Vercel 免费层上的自托管 Bitwarden 兼容密码管理器。
+  **部署在 Vercel 上的自托管、Bitwarden 兼容密码管理器**
 
-<a href="https://vercelwarden.vercel.app/web-vault/index.html#/login" target="_blank">在线预览</a>
+  [![MIT License](https://img.shields.io/badge/license-MIT-52D6C5.svg)](./LICENSE)
+  [![Next.js 16](https://img.shields.io/badge/Next.js-16-0B1220.svg?logo=next.js)](https://nextjs.org/)
+  [![Deploy on Vercel](https://img.shields.io/badge/deploy-Vercel-7186FF.svg?logo=vercel&logoColor=white)](https://vercel.com/)
+  [![Turso](https://img.shields.io/badge/database-Turso-4FF8D2.svg)](https://turso.tech/)
 
-完全兼容：
-- Bitwarden 浏览器扩展（Chrome / Firefox / Safari / Edge）
-- Bitwarden 桌面端（Windows / macOS / Linux）
-- Bitwarden 移动端（iOS / Android）
-- Web Vault
+  [English](./README.md) · [简体中文](./README.zh-CN.md)
 
-## 特性
+  [在线体验](https://vercelwarden.vercel.app/login) · [部署文档](./DEPLOYMENT.md) · [API 文档](./API.md)
+</div>
 
-- 完整对标 Bitwarden API 协议
-- 零知识加密（服务端永远看不到明文密码）
-- 同时支持 Argon2id 与 PBKDF2 KDF；服务端对客户端提交的 hash 再做一次 PBKDF2 拉伸
-- TOTP 两步验证 + 恢复码
-- Bitwarden Send（文本 + 文件）
-- 管理员后台（用户管理：启用/停用/删除）
-- 网站图标代理
-- Vercel Blob 存储附件与文件 Send
-- 可选 HIBP 密码泄露检查
+---
 
-## 快速开始
+## 项目背景
 
-### 1. 创建 Turso 数据库
+成熟的密码管理器通常需要一台长期运行的服务器，也可能带来持续的订阅或运维成本。VercelWarden 希望提供一种更轻量的选择：利用 Vercel、Turso 与 Vercel Blob 的托管能力，让个人开发者和小型团队可以在熟悉的 Serverless 平台上部署自己的密码保险库。
 
-```bash
-# 安装 Turso CLI
-curl -sSfL https://get.tur.so/install.sh | bash
+项目实现了 Bitwarden 客户端所需的核心兼容接口，并提供自有 Web Vault。敏感保险库数据由客户端加密后再同步，服务端不保存明文主密码或明文保险库内容。
 
-# 登录并创建数据库
-turso db create vercelwarden
-turso db tokens create vercelwarden
+> VercelWarden 是社区项目，与 Bitwarden Inc. 没有关联，也未获得其背书。请在生产使用前自行完成安全评估、密钥管理和备份策略。
 
-# 获取连接 URL
-turso db show vercelwarden --url
-```
+## 项目作用
 
-### 2. 配置环境变量
+VercelWarden 可以帮助你：
 
-```bash
-cp .env.example .env.local
-```
+- 在自己的 Vercel 与 Turso 账号中托管密码数据；
+- 使用自有 Web Vault，或连接 Bitwarden 浏览器扩展、桌面端与移动端；
+- 管理登录信息、安全笔记、TOTP、附件、文件夹、收藏、归档和回收站；
+- 使用文本或文件 Send 分享内容；
+- 通过密码健康度、重复项检测和可选 HIBP 查询发现安全风险；
+- 通过管理后台管理用户、审计、备份及可选实时通知能力。
 
-填入：
-- `TURSO_DATABASE_URL` — 步骤 1 获得
-- `TURSO_AUTH_TOKEN` — 步骤 1 获得
-- `JWT_SECRET` — **必填，≥ 32 字符**（例如 `openssl rand -hex 32`）
-- `ADMIN_PASSWORD` — **必填，≥ 8 字符**
-- `HIBP_API_KEY` — *可选*，启用密码泄露检查
-- `BLOB_READ_WRITE_TOKEN` — *可选*，附件和文件 Send 需要
-- `DISABLE_REGISTRATION` — *可选*，设为 `true` 关闭公开注册（在 `/api/config` 中声明）
+## 核心能力
 
-### 3. 推送数据库 schema
+| 能力 | 说明 |
+| --- | --- |
+| 客户端加密 | 支持 Argon2id 与 PBKDF2；服务端对提交的认证哈希再次拉伸 |
+| 多端兼容 | 对接 Bitwarden 浏览器扩展、桌面端、移动端及自有 Web Vault |
+| 双重验证 | 支持 TOTP 与恢复码，仓库中另有可选 Passkey/WebAuthn 能力开关 |
+| 导入与导出 | 支持 Bitwarden JSON/CSV，并可生成账户密钥或独立密码保护的导出文件 |
+| 附件与 Send | 使用 Vercel Blob 存储附件和文件 Send |
+| 管理与恢复 | 提供用户治理、审计、加密备份及 merge/replace 恢复流程 |
+| 通知 | 默认轮询，可选 SSE；SignalR WebSocket 为实验性功能 |
 
-```bash
-npx drizzle-kit push
-```
+## 兼容客户端
 
-### 4. 部署到 Vercel
+- Chrome、Firefox、Safari 和 Edge 的 Bitwarden 浏览器扩展
+- Windows、macOS 和 Linux 的 Bitwarden 桌面客户端
+- iOS 和 Android 的 Bitwarden 移动客户端
+- VercelWarden 自有 Web Vault
 
-```bash
-# 安装 Vercel CLI
-npm i -g vercel
-
-# 部署
-vercel
-
-# 在 Vercel 控制台或 CLI 中设置环境变量：
-vercel env add TURSO_DATABASE_URL
-vercel env add TURSO_AUTH_TOKEN
-vercel env add JWT_SECRET
-vercel env add ADMIN_PASSWORD
-```
-
-### 5. 配置 Bitwarden 客户端
-
-1. 打开 Bitwarden 浏览器扩展（或桌面端）
-2. 登录界面点击齿轮（设置）
-3. 选 "Self-hosted" → 服务器 URL 填 `https://your-project.vercel.app`
-4. 注册新账号（默认开放注册，若设置 `DISABLE_REGISTRATION=true` 则关闭）
-
-## API 兼容性
-
-| 端点 | 方法 | 状态 |
-|------|------|------|
-| `/api/config` `/api/version` `/alive` `/api/alive` | GET | ✅ 服务器元数据 |
-| `/identity/connect/token` | POST | ✅ 密码 + 刷新 + 2FA |
-| `/identity/accounts/prelogin` `/identity/accounts/prelogin/password` `/api/accounts/prelogin` | POST | ✅ |
-| `/api/accounts/register` | POST | ✅ 旧版（CLI） |
-| `/identity/accounts/register/send-verification-email` | POST | ✅ 无 SMTP，token 直接返回 |
-| `/identity/accounts/register/finish` | POST | ✅ |
-| `/api/accounts/profile` | GET/PUT/POST | ✅ |
-| `/api/accounts/keys` | POST | ✅ |
-| `/api/accounts/password` | POST | ✅ |
-| `/api/accounts/kdf` | POST | ✅ |
-| `/api/accounts/set-password` | POST | ✅ |
-| `/api/accounts/verify-password` | POST | ✅ |
-| `/api/accounts/security-stamp` | POST | ✅ 全设备登出 |
-| `/api/accounts/delete` | POST/DELETE | ✅ |
-| `/api/accounts/password-hint` | POST | ✅ |
-| `/api/accounts/avatar` | PUT | ✅ |
-| `/api/accounts/revision-date` | GET | ✅ |
-| `/api/devices/knowndevice[/{email}/{id}]` | GET | ✅ |
-| `/api/sync` | GET | ✅ |
-| `/api/ciphers` | GET/POST | ✅ |
-| `/api/ciphers/{id}` | GET/PUT/DELETE | ✅ |
-| `/api/ciphers/{id}/delete` | PUT | ✅ 软删除 |
-| `/api/ciphers/{id}/restore` | PUT | ✅ |
-| `/api/ciphers/delete` | PUT | ✅ 批量软删除 |
-| `/api/ciphers/move` | POST | ✅ |
-| `/api/ciphers/purge` | POST | ✅ |
-| `/api/ciphers/{id}/attachment[/{aid}]` | POST/GET/DELETE | ✅ Vercel Blob |
-| `/api/folders` `/api/folders/{id}` | GET/POST/PUT/DELETE | ✅ |
-| `/api/two-factor` | GET | ✅ |
-| `/api/two-factor/get-authenticator` | POST | ✅ |
-| `/api/two-factor/authenticator` | PUT/POST | ✅ 启用 TOTP |
-| `/api/two-factor/disable` | PUT/POST | ✅ |
-| `/api/two-factor/recover` | POST | ✅ 恢复码 |
-| `/api/sends` `/api/sends/{id}` | GET/POST/PUT/DELETE | ✅ |
-| `/api/sends/file` | POST | ✅ Vercel Blob（hobby 4.5 MB 上限） |
-| `/api/sends/{id}/remove-password` | PUT | ✅ |
-| `/api/sends/access/{id}[/file/{fid}]` | POST | ✅ 公开访问 |
-| `/api/hibp/breach` | GET | ✅ 需要 `HIBP_API_KEY` |
-| `/api/icons/{domain}` `/icons/{domain}` | GET | ✅ 图标代理 |
-| `/api/settings/domains` | GET | ✅ |
-| 2FA（WebAuthn、邮件、Duo） | — | 🚧 不在范围内 |
-| 组织 / 集合 | — | 🚧 不在范围内（单用户） |
-| 紧急访问 / SSO | — | 🚧 不在范围内 |
-| WebSocket 实时通知 | — | ❌ Vercel 无法承载（客户端会自动降级为轮询） |
+详细接口覆盖情况见 [API.md](./API.md)。
 
 ## 技术栈
 
-- **框架**：Next.js 16（App Router）
-- **数据库**：Turso（libSQL 边缘）+ Drizzle ORM
-- **认证**：JWT（jose 库）
-- **附件**：Vercel Blob
-- **托管**：Vercel（免费层）
+- Next.js 16（App Router）与 React 19
+- Turso（libSQL）与 Drizzle ORM
+- JWT / JOSE、Web Crypto、Argon2id / PBKDF2
+- Vercel Functions 与 Vercel Blob
+- Vitest 与 Playwright
+
+## 快速开始
+
+环境要求：Node.js 20+、pnpm、Turso 账号和 Vercel 账号。
+
+```bash
+git clone https://github.com/lyxlucky/vercelwarden.git
+cd vercelwarden
+pnpm install
+cp .env.example .env.local
+```
+
+至少配置以下环境变量：
+
+```dotenv
+TURSO_DATABASE_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=your-turso-token
+JWT_SECRET=your-random-secret
+ADMIN_PASSWORD=your-admin-password
+SERVER_ENCRYPTION_KEY=your-random-32-byte-base64-key
+BACKUP_ENCRYPTION_KEY=another-random-32-byte-base64-key
+DOMAIN=https://your-project.vercel.app
+```
+
+随后初始化数据库并启动开发服务器：
+
+```bash
+pnpm db:migrate
+pnpm dev
+```
+
+生产部署、密钥生成和可选能力配置请阅读 [DEPLOYMENT.md](./DEPLOYMENT.md)。完整变量说明见 [.env.example](./.env.example)。
+
+## 连接 Bitwarden 客户端
+
+1. 在 Bitwarden 客户端登录页打开服务器设置。
+2. 选择自托管环境。
+3. 将 Server URL 设置为 `https://your-project.vercel.app`。
+4. 注册或登录你的 VercelWarden 账号。
 
 ## 已知限制
 
-- **文件 Send 和附件**：Vercel Blob hobby 层单文件上限约 4.5 MB；Pro 层升到 5 GB。
-- **不支持 SMTP**：注册流程会调用 `/identity/accounts/register/send-verification-email`，但实际不发邮件 —— verification token 直接随响应返回。如需真实门禁，可设置 `DISABLE_REGISTRATION=true` 关闭公开注册。
-- **不支持 WebSocket 实时通知**：Vercel serverless 无法承载 SignalR Hub。Bitwarden 客户端会自动降级为轮询 `/api/sync`（功能正常，只是会有延迟）。
+- 项目主要面向个人和小型部署；组织、集合、SSO 与紧急访问不在当前范围内。
+- Vercel Blob Hobby 套餐的请求与上传限制会影响较大的附件和文件 Send。
+- 项目不提供 SMTP 服务。需要限制注册时，请设置 `DISABLE_REGISTRATION=true`。
+- WebSocket 通知依赖 Vercel Fluid Compute 和 Redis 兼容的 Pub/Sub 服务，目前仍属实验性能力；SSE 与轮询可作为回退。
 
-## 升级说明（2026-05-27 Bitwarden 对标）
+## 文档
 
-如果你是从早期版本升级过来：`users.password_hash` 字段语义已变更，现在存的是服务端二次 PBKDF2 后的 hash，不再是客户端提交的原始 hash。**所有旧账号必须删除后重新注册**（管理后台 → 用户 → 删除）。拉取代码后运行 `npx drizzle-kit push`。`invitation_codes` 表和 `REQUIRE_INVITE_CODE` 开关已移除；如有遗留可执行 `DROP TABLE IF EXISTS invitation_codes;`。
+- [部署指南](./DEPLOYMENT.md)
+- [API 兼容文档](./API.md)
+- [环境变量示例](./.env.example)
+- [数据库结构](./schema.sql)
 
-## 许可证
+## 开源协议
 
-MIT
+本项目采用 [MIT License](./LICENSE) 开源。你可以自由使用、复制、修改、合并、发布、分发、再许可或销售本项目的副本，但需要保留原始版权声明和许可声明。
 
-## 自有 Web Vault（2026-07）
+软件按“原样”提供，不附带任何形式的担保。密码管理器属于安全敏感软件，请自行审查代码并妥善管理生产密钥、数据库访问令牌与备份。
 
-仓库现已使用 Next.js App Router 自有客户端替代旧 `public/web-vault/**` 静态 SPA。旧 `/web-vault` 深链会迁移到 `/login`、`/vault`、`/settings`、`/generator` 或 `/sends`，不再恢复已删除的旧客户端资产。
+---
 
-管理员治理入口包括 `/admin`、`/logs` 和 `/backup`。生产环境至少配置：
-
-- `ADMIN_BOOTSTRAP_EMAIL`：首次管理员账号邮箱；仅在尚无管理员时提升。
-- `SERVER_ENCRYPTION_KEY`：32 字节 Base64，用于服务端机密配置。
-- `BACKUP_ENCRYPTION_KEY`：另一把独立的 32 字节 Base64，用于备份数据密钥包装。
-- `ENABLE_ADMIN_INVITES=true`、`ENABLE_ADMIN_AUDIT=true`、`ENABLE_ADMIN_BACKUP=true`：逐项开启治理能力。
-- `MAINTENANCE_CRON_SECRET`：保护 `/api/internal/maintenance` 清理任务。
-
-备份支持本地开发存储、Vercel Blob 和 WebDAV，归档包含版本化 manifest、AES-256-GCM 认证加密和 SHA-256 完整性摘要。下载、删除、目标配置及 merge/replace 恢复均要求管理员 Bearer 会话和用途绑定的再认证证明。
-
-升级时依次执行 Drizzle migrations（当前新增 `0007_account_security.sql`、`0008_admin_governance.sql`），完成 `pnpm build`、`pnpm test`、`pnpm test:contract` 与 `pnpm test:e2e` 后再打开能力开关。
+<div align="center">
+  为希望掌控自己密码保险库的人而构建。
+</div>
