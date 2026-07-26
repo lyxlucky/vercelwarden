@@ -10,6 +10,10 @@ import type {
 import { isNormalizedNotificationEvent } from "@/lib/server/notifications/types";
 
 const CHANNEL_PREFIX = "vercelwarden:notifications:";
+const HISTORY_PREFIX = "vercelwarden:notifications:history:";
+const DEFAULT_MAX_HISTORY_ENTRIES = 100;
+const DEFAULT_HISTORY_TTL_SECONDS = 3_600;
+const DEFAULT_REPLAY_WINDOW_MS = 15_000;
 
 export interface RedisPubSubClient {
   readonly status?: string;
@@ -18,6 +22,10 @@ export interface RedisPubSubClient {
   unsubscribe(channel: string): Promise<unknown>;
   ping(): Promise<unknown>;
   quit(): Promise<unknown>;
+  zadd(key: string, score: number, member: string): Promise<unknown>;
+  zremrangebyrank(key: string, start: number, stop: number): Promise<unknown>;
+  zrangebyscore(key: string, min: string, max: string): Promise<string[]>;
+  expire(key: string, seconds: number): Promise<unknown>;
   on(event: "message", listener: (channel: string, message: string) => void): unknown;
   off(event: "message", listener: (channel: string, message: string) => void): unknown;
 }
@@ -39,6 +47,17 @@ function channelFor(userUuid: string): string {
   return `${CHANNEL_PREFIX}${encodeURIComponent(userUuid)}`;
 }
 
+function historyKeyFor(userUuid: string): string {
+  return `${HISTORY_PREFIX}${encodeURIComponent(userUuid)}`;
+}
+
+export interface RedisNotificationBusOptions {
+  maxHistoryEntries?: number;
+  historyTtlSeconds?: number;
+  replayWindowMs?: number;
+  now?: () => number;
+}
+
 interface LocalSubscription {
   listeners: Set<NotificationListener>;
   lastSequenceByListener: Map<NotificationListener, number>;
@@ -49,18 +68,43 @@ export class RedisNotificationBus implements NotificationBus {
   private readonly publisher: RedisPubSubClient;
   private readonly subscriber: RedisPubSubClient;
   private readonly subscriptions = new Map<string, LocalSubscription>();
+  private readonly maxHistoryEntries: number;
+  private readonly historyTtlSeconds: number;
+  private readonly replayWindowMs: number;
+  private readonly now: () => number;
   private closed = false;
 
-  constructor(url: string, factory: RedisClientFactory = createRedisClient) {
+  constructor(
+    url: string,
+    factory: RedisClientFactory = createRedisClient,
+    options: RedisNotificationBusOptions = {}
+  ) {
     if (!url.trim()) throw new Error("A Redis Pub/Sub URL is required.");
     this.publisher = factory(url, "publisher");
     this.subscriber = factory(url, "subscriber");
     this.subscriber.on("message", this.onMessage);
+    this.maxHistoryEntries = options.maxHistoryEntries ?? DEFAULT_MAX_HISTORY_ENTRIES;
+    this.historyTtlSeconds = options.historyTtlSeconds ?? DEFAULT_HISTORY_TTL_SECONDS;
+    this.replayWindowMs = options.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
+    this.now = options.now ?? (() => Date.now());
   }
 
   async publish(event: NormalizedNotificationEvent): Promise<void> {
     if (this.closed) throw new Error("Notification bus is closed.");
-    await this.publisher.publish(channelFor(event.userUuid), JSON.stringify(event));
+    const payload = JSON.stringify(event);
+    const historyKey = historyKeyFor(event.userUuid);
+    try {
+      // Record into a bounded per-user history BEFORE publishing, so anything a
+      // live subscriber sees was already persisted. A subscriber that missed the
+      // live frame (subscribe-boundary race or a brief reconnect) then catches up
+      // via replayHistory() on its next subscribe.
+      await this.publisher.zadd(historyKey, event.sequence, payload);
+      await this.publisher.zremrangebyrank(historyKey, 0, -(this.maxHistoryEntries + 1));
+      await this.publisher.expire(historyKey, this.historyTtlSeconds);
+    } catch {
+      // History is a best-effort catch-up buffer; never let it block live delivery.
+    }
+    await this.publisher.publish(channelFor(event.userUuid), payload);
   }
 
   async subscribe(
@@ -82,9 +126,10 @@ export class RedisNotificationBus implements NotificationBus {
       }
     }
     subscription.listeners.add(listener);
-    subscription.lastSequenceByListener.set(listener, options.lastSequence ?? 0);
+    const lastSequence = options.lastSequence ?? 0;
+    subscription.lastSequenceByListener.set(listener, lastSequence);
     let active = true;
-    return async () => {
+    const unsubscribe = async () => {
       if (!active) return;
       active = false;
       const current = this.subscriptions.get(channel);
@@ -96,6 +141,11 @@ export class RedisNotificationBus implements NotificationBus {
         await this.subscriber.unsubscribe(channel);
       }
     };
+    // Catch up on events published during the subscribe-boundary race or a brief
+    // reconnect gap. Reads go through the publisher connection — the subscriber is
+    // in subscribe mode and cannot run regular commands.
+    await this.replayHistory(userUuid, subscription, listener, lastSequence);
+    return unsubscribe;
   }
 
   async health(): Promise<NotificationBusHealth> {
@@ -125,6 +175,45 @@ export class RedisNotificationBus implements NotificationBus {
     await Promise.allSettled([this.subscriber.quit(), this.publisher.quit()]);
   }
 
+  private dispatch(
+    subscription: LocalSubscription,
+    listener: NotificationListener,
+    event: NormalizedNotificationEvent
+  ): void {
+    const lastSequence = subscription.lastSequenceByListener.get(listener) ?? 0;
+    if (event.sequence <= lastSequence) return;
+    subscription.lastSequenceByListener.set(listener, event.sequence);
+    void Promise.resolve(listener(event)).catch(() => undefined);
+  }
+
+  private async replayHistory(
+    userUuid: string,
+    subscription: LocalSubscription,
+    listener: NotificationListener,
+    lastSequence: number
+  ): Promise<void> {
+    if (this.replayWindowMs <= 0) return;
+    let entries: string[];
+    try {
+      entries = await this.publisher.zrangebyscore(historyKeyFor(userUuid), `(${lastSequence}`, "+inf");
+    } catch {
+      return; // Best-effort: live Pub/Sub and the revision poll still converge.
+    }
+    const cutoff = this.now() - this.replayWindowMs;
+    for (const raw of entries) {
+      if (!subscription.listeners.has(listener)) return; // unsubscribed mid-replay
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      if (!isNormalizedNotificationEvent(parsed) || parsed.userUuid !== userUuid) continue;
+      if (Date.parse(parsed.publishedAt) < cutoff) continue; // only the recent gap
+      this.dispatch(subscription, listener, parsed);
+    }
+  }
+
   private readonly onMessage = (channel: string, message: string) => {
     const subscription = this.subscriptions.get(channel);
     if (!subscription) return;
@@ -136,10 +225,7 @@ export class RedisNotificationBus implements NotificationBus {
     }
     if (!isNormalizedNotificationEvent(parsed) || channelFor(parsed.userUuid) !== channel) return;
     for (const listener of subscription.listeners) {
-      const lastSequence = subscription.lastSequenceByListener.get(listener) ?? 0;
-      if (parsed.sequence <= lastSequence) continue;
-      subscription.lastSequenceByListener.set(listener, parsed.sequence);
-      void Promise.resolve(listener(parsed)).catch(() => undefined);
+      this.dispatch(subscription, listener, parsed);
     }
   };
 }

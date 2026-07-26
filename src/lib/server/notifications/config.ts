@@ -6,6 +6,7 @@ export interface NotificationEnvironment {
   NODE_ENV?: string;
   NOTIFICATIONS_MODE?: string;
   NOTIFICATIONS_REDIS_URL?: string;
+  NOTIFICATIONS_REPLAY_WINDOW_MS?: string;
   VERCEL_WEBSOCKET_ENABLED?: string;
 }
 

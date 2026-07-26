@@ -12,13 +12,27 @@ type NotificationGlobal = typeof globalThis & {
 
 const notificationGlobal = globalThis as NotificationGlobal;
 
+const MAX_REPLAY_WINDOW_MS = 300_000;
+
+// Parse an explicit NOTIFICATIONS_REPLAY_WINDOW_MS override. Returns undefined
+// when unset/invalid so RedisNotificationBus applies its own default (the single
+// source of truth for the default window). 0 disables replay.
+function parseReplayWindowMs(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(Math.max(Math.trunc(parsed), 0), MAX_REPLAY_WINDOW_MS);
+}
+
 export function createNotificationBus(
   env: NotificationEnvironment = process.env,
   redisFactory?: RedisClientFactory
 ): NotificationBus {
   const configuration = buildNotificationConfiguration(env);
   if (configuration.broker === "redis") {
-    return new RedisNotificationBus(env.NOTIFICATIONS_REDIS_URL!, redisFactory);
+    return new RedisNotificationBus(env.NOTIFICATIONS_REDIS_URL!, redisFactory, {
+      replayWindowMs: parseReplayWindowMs(env.NOTIFICATIONS_REPLAY_WINDOW_MS),
+    });
   }
   return new MemoryNotificationBus();
 }
