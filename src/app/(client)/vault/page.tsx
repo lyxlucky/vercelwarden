@@ -202,6 +202,7 @@ export default function VaultPage() {
     const selectedSucceeded = result?.outcomes.some((outcome) => outcome.id === selectedId && outcome.status === "succeeded");
     if (selectedSucceeded) { setSelectedId(null); setMobilePane("list"); updateItemUrl(null); }
   };
+  const pendingTarget = pendingConfirm?.items.length === 1 ? pendingConfirm.items[0]?.name : `${pendingConfirm?.items.length ?? 0} 个项目`;
 
   const openMore = (event: MouseEvent<HTMLElement>) => setMoreAnchor(event.currentTarget);
   const closeMore = () => setMoreAnchor(null);
@@ -306,11 +307,11 @@ export default function VaultPage() {
       {editorTarget !== null ? <VaultEditor open item={editorTarget === "new" ? null : editorTarget} folders={vault.folders} onOpenChange={(open) => { if (!open) setEditorTarget(null); }} onSaved={(item) => { setSelectedId(item.id); setMobilePane("detail"); updateItemUrl(item.id); }} /> : null}
       <FolderManagerDialog open={folderDialog} folders={vault.folders} onOpenChange={setFolderDialog} onCreate={(name) => folderMutation(() => createFolder(name), "文件夹已创建")} onRename={(id, name) => folderMutation(() => renameFolder(id, name), "文件夹已重命名")} onDelete={(id) => folderMutation(() => deleteFolder(id), "文件夹已删除")} />
       <MoveItemsDialog open={Boolean(moveTargets)} count={moveTargets?.length ?? 0} folders={vault.folders} onOpenChange={(open) => { if (!open) setMoveTargets(null); }} onMove={async (folderId) => { if (moveTargets) await runItems(moveTargets, (items) => moveCiphers(items, folderId)); }} />
-      <ConfirmItemsDialog open={pendingConfirm?.mode === "archive"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="归档项目" description={`归档 ${pendingConfirm?.items.length ?? 0} 个项目。`} confirmLabel="归档" onConfirm={async () => { await runPendingConfirm(archiveCiphers); }} />
-      <ConfirmItemsDialog open={pendingConfirm?.mode === "unarchive"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="取消归档" description={`将 ${pendingConfirm?.items.length ?? 0} 个项目移回活动密码库。`} confirmLabel="取消归档" onConfirm={async () => { await runPendingConfirm(unarchiveCiphers); }} />
-      <ConfirmItemsDialog open={pendingConfirm?.mode === "restore"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="恢复项目" description={`从回收站恢复 ${pendingConfirm?.items.length ?? 0} 个项目。`} confirmLabel="恢复" onConfirm={async () => { await runPendingConfirm(restoreCiphers); }} />
-      <ConfirmItemsDialog open={pendingConfirm?.mode === "trash"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="移入回收站" description={`将 ${pendingConfirm?.items.length ?? 0} 个项目移入回收站。`} confirmLabel="移入回收站" danger onConfirm={async () => { await runPendingConfirm(trashCiphers); }} />
-      <ConfirmItemsDialog open={pendingConfirm?.mode === "permanent"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="永久删除项目" description={`永久删除 ${pendingConfirm?.items.length ?? 0} 个项目。此操作无法撤销。`} confirmLabel="永久删除" danger onConfirm={async () => { await runPendingConfirm(permanentlyDeleteCiphers); }} />
+      <ConfirmItemsDialog open={pendingConfirm?.mode === "archive"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="归档项目" description={`归档 ${pendingConfirm?.items.length ?? 0} 个项目。`} target={pendingTarget} consequences="项目将离开活动密码库，可稍后从归档视图恢复。" confirmLabel="归档" onConfirm={async () => { await runPendingConfirm(archiveCiphers); }} />
+      <ConfirmItemsDialog open={pendingConfirm?.mode === "unarchive"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="取消归档" description={`将 ${pendingConfirm?.items.length ?? 0} 个项目移回活动密码库。`} target={pendingTarget} confirmLabel="取消归档" onConfirm={async () => { await runPendingConfirm(unarchiveCiphers); }} />
+      <ConfirmItemsDialog open={pendingConfirm?.mode === "restore"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="恢复项目" description={`从回收站恢复 ${pendingConfirm?.items.length ?? 0} 个项目。`} target={pendingTarget} confirmLabel="恢复" onConfirm={async () => { await runPendingConfirm(restoreCiphers); }} />
+      <ConfirmItemsDialog open={pendingConfirm?.mode === "trash"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="移入回收站" description={`将 ${pendingConfirm?.items.length ?? 0} 个项目移入回收站。`} target={pendingTarget} consequences="项目不会立即永久删除，可从回收站恢复。" confirmLabel="移入回收站" danger onConfirm={async () => { await runPendingConfirm(trashCiphers); }} />
+      <ConfirmItemsDialog open={pendingConfirm?.mode === "permanent"} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }} title="永久删除项目" description={`永久删除 ${pendingConfirm?.items.length ?? 0} 个项目。`} target={pendingTarget} consequences="此操作无法撤销，项目内容和附件将无法恢复。" confirmLabel="永久删除" danger onConfirm={async () => { await runPendingConfirm(permanentlyDeleteCiphers); }} />
       <ConflictDialog open={conflictDialog} onOpenChange={setConflictDialog} onReload={refresh} />
     </RouteGuard>
   );

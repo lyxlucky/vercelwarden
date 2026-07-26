@@ -88,7 +88,7 @@ export function FolderManagerDialog({ open, folders, onOpenChange, onCreate, onR
                 )}
                 sx={{ mb: 0.75, border: 1, borderColor: "divider", borderRadius: 0 }}
               >
-                <ListItemAvatar><Avatar sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: "primary.main" }}><FolderOutlined /></Avatar></ListItemAvatar>
+                <ListItemAvatar><Avatar variant="rounded" sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: "primary.main" }}><FolderOutlined /></Avatar></ListItemAvatar>
                 <ListItemText primary={folder.name} secondary="密码库文件夹" />
               </ListItem>
             ))}</List>
@@ -109,7 +109,7 @@ export function MoveItemsDialog({ open, count, folders, onOpenChange, onMove }: 
       <DialogTitle>移动项目</DialogTitle>
       <DialogContent>
         <Stack direction="row" sx={{ alignItems: "center", gap: 1.5, mb: 2.5 }}>
-          <Avatar sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: "primary.main" }}><DriveFileMoveOutlined /></Avatar>
+          <Avatar variant="rounded" sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: "primary.main" }}><DriveFileMoveOutlined /></Avatar>
           <DialogContentText>将 {count} 个项目移动到所选文件夹。</DialogContentText>
         </Stack>
         <FormControl><InputLabel id="move-folder-label">目标文件夹</InputLabel><Select labelId="move-folder-label" label="目标文件夹" value={folderId} onChange={(event) => setFolderId(event.target.value)}><MenuItem value="">无文件夹</MenuItem>{folders.map((folder) => <MenuItem key={folder.id} value={folder.id}>{folder.name}</MenuItem>)}</Select></FormControl>
@@ -119,9 +119,9 @@ export function MoveItemsDialog({ open, count, folders, onOpenChange, onMove }: 
   );
 }
 
-export function ConfirmItemsDialog({ open, title, description, confirmLabel, danger = false, onOpenChange, onConfirm }: { open: boolean; title: string; description: string; confirmLabel: string; danger?: boolean; onOpenChange(open: boolean): void; onConfirm(): Promise<void> }) {
+export function ConfirmItemsDialog({ open, title, description, target, consequences, confirmLabel, danger = false, onOpenChange, onConfirm }: { open: boolean; title: string; description: string; target?: string; consequences?: string; confirmLabel: string; danger?: boolean; onOpenChange(open: boolean): void; onConfirm(): Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  return <ConfirmDialog open={open} title={title} description={description} target="当前选择" consequences="请确认所选范围正确后继续。" confirmLabel={confirmLabel} tone={danger ? "danger" : "warning"} busy={busy} onCancel={() => onOpenChange(false)} onConfirm={async () => { setBusy(true); try { await onConfirm(); onOpenChange(false); } finally { setBusy(false); } }} />;
+  return <ConfirmDialog open={open} title={title} description={description} target={target ?? "当前选择"} consequences={consequences ?? "请确认所选范围正确后继续。"} confirmLabel={confirmLabel} tone={danger ? "danger" : "warning"} busy={busy} onCancel={() => onOpenChange(false)} onConfirm={async () => { setBusy(true); try { await onConfirm(); onOpenChange(false); } finally { setBusy(false); } }} />;
 }
 
 export function ConflictDialog({ open, onOpenChange, onReload }: { open: boolean; onOpenChange(open: boolean): void; onReload(): Promise<void> }) {

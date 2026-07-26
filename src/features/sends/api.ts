@@ -8,6 +8,7 @@ import {
   wipeBytes,
 } from "@/lib/client/crypto/auth";
 import { authSecretStore } from "@/features/auth/secret-store";
+import { deriveSendContentKey } from "@/features/sends/crypto";
 import { sessionStore } from "@/lib/client/state/session-store";
 
 interface WireSendFile {
@@ -84,21 +85,23 @@ async function sha256Hex(bytes: Uint8Array<ArrayBuffer>) {
 }
 
 async function decryptSend(send: WireSend, vaultKey: Uint8Array): Promise<SendView> {
-  const sendKey = await decryptWithUserKey(send.key, vaultKey);
+  const sendKeyMaterial = await decryptWithUserKey(send.key, vaultKey);
+  let contentKey: Uint8Array | undefined;
   try {
+    contentKey = await deriveSendContentKey(sendKeyMaterial);
     return {
       id: send.id,
       accessId: send.accessId,
       type: send.type,
-      name: await decryptTextWithUserKey(send.name, sendKey),
-      notes: send.notes ? await decryptTextWithUserKey(send.notes, sendKey) : "",
-      text: send.text?.text ? await decryptTextWithUserKey(send.text.text, sendKey) : "",
+      name: await decryptTextWithUserKey(send.name, contentKey),
+      notes: send.notes ? await decryptTextWithUserKey(send.notes, contentKey) : "",
+      text: send.text?.text ? await decryptTextWithUserKey(send.text.text, contentKey) : "",
       file: send.file ? {
         id: send.file.id,
-        fileName: await decryptTextWithUserKey(send.file.fileName, sendKey),
+        fileName: await decryptTextWithUserKey(send.file.fileName, contentKey),
         size: Number(send.file.size),
       } : null,
-      url: `${window.location.origin}/send/${encodeURIComponent(send.accessId)}#${base64url(sendKey)}`,
+      url: `${window.location.origin}/send/${encodeURIComponent(send.accessId)}#${base64url(sendKeyMaterial)}`,
       accessCount: send.accessCount,
       maxAccessCount: send.maxAccessCount,
       disabled: send.disabled,
@@ -107,7 +110,8 @@ async function decryptSend(send: WireSend, vaultKey: Uint8Array): Promise<SendVi
       deletionDate: send.deletionDate,
     };
   } finally {
-    wipeBytes(sendKey);
+    wipeBytes(contentKey);
+    wipeBytes(sendKeyMaterial);
   }
 }
 
@@ -130,12 +134,12 @@ interface CreateSendInput {
   hideEmail?: boolean;
 }
 
-async function encryptedEnvelope(input: CreateSendInput, sendKey: Uint8Array, vaultKey: Uint8Array) {
+async function encryptedEnvelope(input: CreateSendInput, sendKeyMaterial: Uint8Array, contentKey: Uint8Array, vaultKey: Uint8Array) {
   const encoder = new TextEncoder();
   return {
-    key: await encryptWithUserKey(sendKey, vaultKey),
-    name: await encryptWithUserKey(encoder.encode(input.name), sendKey),
-    notes: input.notes ? await encryptWithUserKey(encoder.encode(input.notes), sendKey) : null,
+    key: await encryptWithUserKey(sendKeyMaterial, vaultKey),
+    name: await encryptWithUserKey(encoder.encode(input.name), contentKey),
+    notes: input.notes ? await encryptWithUserKey(encoder.encode(input.notes), contentKey) : null,
     password: input.password || null,
     maxAccessCount: input.maxAccessCount ?? null,
     expirationDate: input.expirationDate ?? null,
@@ -148,16 +152,19 @@ async function encryptedEnvelope(input: CreateSendInput, sendKey: Uint8Array, va
 export async function createTextSend(input: CreateSendInput & { text: string }) {
   const vaultKey = authSecretStore.getVaultKey();
   if (!vaultKey) throw new Error("Vault key unavailable.");
-  const sendKey = crypto.getRandomValues(new Uint8Array(64));
+  const sendKeyMaterial = crypto.getRandomValues(new Uint8Array(16));
+  let contentKey: Uint8Array | undefined;
   try {
+    contentKey = await deriveSendContentKey(sendKeyMaterial);
     const wire = await apiClient<WireSend>("/api/sends", { method: "POST", body: {
       type: 0,
-      ...await encryptedEnvelope(input, sendKey, vaultKey),
-      text: { text: await encryptWithUserKey(new TextEncoder().encode(input.text), sendKey), hidden: false },
+      ...await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey),
+      text: { text: await encryptWithUserKey(new TextEncoder().encode(input.text), contentKey), hidden: false },
     } });
     return decryptSend(wire, vaultKey);
   } finally {
-    wipeBytes(sendKey);
+    wipeBytes(contentKey);
+    wipeBytes(sendKeyMaterial);
     wipeBytes(vaultKey);
   }
 }
@@ -182,14 +189,16 @@ function uploadFile(url: string, bytes: ArrayBuffer, headers: Record<string, str
 export async function createFileSend(input: CreateSendInput & { file: File }, onProgress?: (progress: SendTransferProgress) => void) {
   const vaultKey = authSecretStore.getVaultKey();
   if (!vaultKey) throw new Error("Vault key unavailable.");
-  const sendKey = crypto.getRandomValues(new Uint8Array(64));
+  const sendKeyMaterial = crypto.getRandomValues(new Uint8Array(16));
+  let contentKey: Uint8Array | undefined;
   try {
+    contentKey = await deriveSendContentKey(sendKeyMaterial);
     report(onProgress, "encrypting", 0, input.file.size);
     const plaintext = new Uint8Array(await input.file.arrayBuffer());
-    const encrypted = await encryptWithUserKey(plaintext, sendKey);
+    const encrypted = await encryptWithUserKey(plaintext, contentKey);
     plaintext.fill(0);
     const encryptedBytes = new TextEncoder().encode(encrypted);
-    const encryptedName = await encryptWithUserKey(new TextEncoder().encode(input.file.name), sendKey);
+    const encryptedName = await encryptWithUserKey(new TextEncoder().encode(input.file.name), contentKey);
     const checksum = await sha256Hex(encryptedBytes);
     report(onProgress, "encrypting", input.file.size, input.file.size);
     const pending = await apiClient<{ send: WireSend; sendId: string; fileId: string; uploadUrl: string; uploadToken: string }>("/api/sends/file", {
@@ -197,7 +206,7 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: {
         type: 1,
-        ...await encryptedEnvelope(input, sendKey, vaultKey),
+        ...await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey),
         file: { fileName: encryptedName, size: encryptedBytes.byteLength, checksum, key: null },
       },
     });
@@ -211,7 +220,8 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
     const sends = await listSends();
     return sends.find((send) => send.id === pending.sendId) ?? decryptSend(pending.send, vaultKey);
   } finally {
-    wipeBytes(sendKey);
+    wipeBytes(contentKey);
+    wipeBytes(sendKeyMaterial);
     wipeBytes(vaultKey);
   }
 }
@@ -221,8 +231,10 @@ export async function updateSend(id: string, input: Partial<CreateSendInput> & {
   if (!vaultKey) throw new Error("Vault key unavailable.");
   try {
     const wire = await apiClient<WireSend>(`/api/sends/${encodeURIComponent(id)}`);
-    const sendKey = await decryptWithUserKey(wire.key, vaultKey);
+    const sendKeyMaterial = await decryptWithUserKey(wire.key, vaultKey);
+    let contentKey: Uint8Array | undefined;
     try {
+      contentKey = await deriveSendContentKey(sendKeyMaterial);
       const body: Record<string, unknown> = {
         maxAccessCount: input.maxAccessCount,
         expirationDate: input.expirationDate,
@@ -230,10 +242,13 @@ export async function updateSend(id: string, input: Partial<CreateSendInput> & {
         disabled: input.disabled,
         hideEmail: input.hideEmail,
       };
-      if (input.name !== undefined) body.name = await encryptWithUserKey(new TextEncoder().encode(input.name), sendKey);
-      if (input.notes !== undefined) body.notes = input.notes ? await encryptWithUserKey(new TextEncoder().encode(input.notes), sendKey) : null;
+      if (input.name !== undefined) body.name = await encryptWithUserKey(new TextEncoder().encode(input.name), contentKey);
+      if (input.notes !== undefined) body.notes = input.notes ? await encryptWithUserKey(new TextEncoder().encode(input.notes), contentKey) : null;
       await apiClient(`/api/sends/${encodeURIComponent(id)}`, { method: "PUT", body });
-    } finally { wipeBytes(sendKey); }
+    } finally {
+      wipeBytes(contentKey);
+      wipeBytes(sendKeyMaterial);
+    }
     return listSends();
   } finally { wipeBytes(vaultKey); }
 }
@@ -263,9 +278,12 @@ export class PublicSendAccessError extends Error {
 }
 
 export async function accessPublicSend(accessId: string, fragment: string, password?: string): Promise<PublicSend> {
-  const sendKey = fromBase64url(fragment);
-  if (sendKey.length !== 64) throw new Error("分享链接缺少有效解密密钥。");
+  const sendKeyMaterial = fromBase64url(fragment);
+  if (sendKeyMaterial.length === 0) throw new Error("分享链接缺少有效解密密钥。");
+  let contentKey: Uint8Array | undefined;
+  let retainContentKey = false;
   try {
+    contentKey = await deriveSendContentKey(sendKeyMaterial);
     const response = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -282,28 +300,29 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
       throw new PublicSendAccessError("unavailable", "分享已过期、停用或达到访问次数上限。");
     }
     const send = await response.json() as { type: number; name: string; text?: { text?: string }; file?: WireSendFile };
-    const name = await decryptTextWithUserKey(send.name, sendKey);
+    const name = await decryptTextWithUserKey(send.name, contentKey);
     if (send.type === 0) {
-      const text = send.text?.text ? await decryptTextWithUserKey(send.text.text, sendKey) : "";
-      wipeBytes(sendKey);
+      const text = send.text?.text ? await decryptTextWithUserKey(send.text.text, contentKey) : "";
       return { type: "text", name, text };
     }
     if (!send.file?.id || !send.file.downloadToken) throw new Error("分享文件不可用。");
+    const fileName = await decryptTextWithUserKey(send.file.fileName, contentKey);
+    retainContentKey = true;
     return {
       type: "file",
       name,
       file: {
         id: send.file.id,
-        fileName: await decryptTextWithUserKey(send.file.fileName, sendKey),
+        fileName,
         size: Number(send.file.size),
         downloadToken: send.file.downloadToken,
         checksum: send.file.checksum ?? null,
       },
-      sendKey,
+      sendKey: contentKey,
     };
-  } catch (error) {
-    wipeBytes(sendKey);
-    throw error;
+  } finally {
+    wipeBytes(sendKeyMaterial);
+    if (!retainContentKey) wipeBytes(contentKey);
   }
 }
 
