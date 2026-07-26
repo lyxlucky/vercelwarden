@@ -1,6 +1,6 @@
 "use client";
 
-import type { ElementType, ReactNode } from "react";
+import { useState, type ElementType, type ReactNode } from "react";
 import {
   AccountBalanceOutlined,
   BadgeOutlined,
@@ -25,8 +25,32 @@ const TYPE_META: Record<number, { label: string; icon: ElementType; color: strin
   8: { label: "护照", icon: PublicOutlined, color: "#283593" },
 };
 
+// Shared type → icon map so navigation, list, and detail never drift apart.
+export function vaultTypeIcon(type: number): ElementType {
+  return (TYPE_META[type] ?? TYPE_META[2]!).icon;
+}
+
 export function vaultTypeLabel(type: number) {
   return TYPE_META[type]?.label ?? "密码库项目";
+}
+
+// Derive the first usable hostname from an item's URIs for the icon proxy.
+// Mirrors the parsing in features/vault/store.ts so results stay consistent.
+function faviconDomain(uris: readonly string[] | undefined): string | null {
+  if (!uris) return null;
+  for (const raw of uris) {
+    const value = raw.trim();
+    if (!value) continue;
+    try {
+      const parsed = new URL(/^\w+:\/\//.test(value) ? value : `https://${value}`);
+      const host = parsed.hostname.toLowerCase();
+      // The /api/icons proxy only accepts hostname-shaped segments.
+      if (/^[a-z0-9.-]+$/.test(host) && host.includes(".")) return host;
+    } catch {
+      // Skip unparseable URIs and try the next one.
+    }
+  }
+  return null;
 }
 
 export function VaultItemAvatar({ type, size = 40 }: { type: number; size?: number }) {
@@ -46,6 +70,44 @@ export function VaultItemAvatar({ type, size = 40 }: { type: number; size?: numb
     >
       <Icon fontSize={size >= 48 ? "medium" : "small"} aria-hidden="true" />
     </Avatar>
+  );
+}
+
+// Login items show the associated website's favicon (served through the same-origin
+// /api/icons proxy, so the vault's domains never leak to a third party). Anything
+// without a resolvable domain — or whose favicon fails to load — falls back to the
+// colored type avatar, keeping every row visually anchored.
+export function VaultItemIcon({ type, uris, size = 40 }: { type: number; uris?: readonly string[]; size?: number }) {
+  const domain = type === 1 ? faviconDomain(uris) : null;
+  const [failed, setFailed] = useState(false);
+
+  if (!domain || failed) return <VaultItemAvatar type={type} size={size} />;
+
+  return (
+    <Box
+      sx={{
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 2,
+        border: 1,
+        borderColor: "divider",
+        bgcolor: "background.default",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        component="img"
+        src={`/api/icons/${domain}/icon.png`}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        sx={{ width: Math.round(size * 0.6), height: Math.round(size * 0.6), objectFit: "contain" }}
+      />
+    </Box>
   );
 }
 

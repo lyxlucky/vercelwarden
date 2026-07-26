@@ -109,7 +109,7 @@ export default function PublicSendPage() {
     setBusy(true);
     setError(null);
     try {
-      await downloadPublicSendFile(params.accessId, send, setProgress);
+      await downloadPublicSendFile(params.accessId, send, password || undefined, setProgress);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "下载失败。");
     } finally {

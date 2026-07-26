@@ -47,6 +47,15 @@ import {
   type SendView,
 } from "@/features/sends/api";
 
+const MAX_SEND_FILE_BYTES = 100 * 1024 * 1024;
+const pad = (value: number) => String(value).padStart(2, "0");
+// Format a timestamp as a `datetime-local` input value in the viewer's local time.
+const toLocalInput = (value: string | number | Date) => {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+const defaultDeletionInput = () => toLocalInput(Date.now() + 7 * 86400_000);
+
 export default function SendsPage() {
   const [items, setItems] = useState<SendView[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -62,6 +71,8 @@ export default function SendsPage() {
   const [maxAccessCount, setMaxAccessCount] = useState("");
   const [disabled, setDisabled] = useState(false);
   const [hideEmail, setHideEmail] = useState(false);
+  const [deletionDate, setDeletionDate] = useState("");
+  const [removePassword, setRemovePassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -98,6 +109,8 @@ export default function SendsPage() {
     setMaxAccessCount("");
     setDisabled(false);
     setHideEmail(false);
+    setDeletionDate(defaultDeletionInput());
+    setRemovePassword(false);
     setProgress(null);
     setFormError(null);
   };
@@ -110,6 +123,9 @@ export default function SendsPage() {
     setMaxAccessCount(item.maxAccessCount == null ? "" : String(item.maxAccessCount));
     setDisabled(item.disabled);
     setHideEmail(item.hideEmail);
+    setDeletionDate(toLocalInput(item.deletionDate));
+    setPassword("");
+    setRemovePassword(false);
     setOpen(true);
   };
 
@@ -119,12 +135,28 @@ export default function SendsPage() {
     setFormError(null);
     setPartial(null);
     try {
+      if (Number.isNaN(Date.parse(deletionDate)) || new Date(deletionDate).getTime() <= Date.now()) {
+        setFormError("请选择一个未来的删除时间。");
+        return;
+      }
+      const deletionIso = new Date(deletionDate).toISOString();
       if (editing) {
-        await updateSend(editing.id, { name, notes, maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null, disabled, hideEmail });
-        await refresh();
+        const updated = await updateSend(editing.id, {
+          name,
+          notes,
+          maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null,
+          disabled,
+          hideEmail,
+          deletionDate: deletionIso,
+          password: removePassword ? null : (password ? password : undefined),
+        });
+        setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       } else {
-        const deletionDate = new Date(Date.now() + 7 * 86400_000).toISOString();
-        const input = { name, notes, password, maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null, deletionDate, disabled, hideEmail };
+        if (type === "file") {
+          if (!file) { setFormError("请选择要分享的文件。"); return; }
+          if (file.size > MAX_SEND_FILE_BYTES) { setFormError("文件超过 100 MB 上限，请选择更小的文件。"); return; }
+        }
+        const input = { name, notes, password, maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null, deletionDate: deletionIso, disabled, hideEmail };
         const created = type === "text" ? await createTextSend({ ...input, text }) : await createFileSend({ ...input, file: file! }, setProgress);
         setItems((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       }
@@ -166,7 +198,7 @@ export default function SendsPage() {
     }
   };
 
-  const valid = Boolean(name.trim()) && (Boolean(editing) || (type === "text" ? Boolean(text) : Boolean(file)));
+  const valid = Boolean(name.trim()) && Boolean(deletionDate) && (Boolean(editing) || (type === "text" ? Boolean(text) : Boolean(file)));
   const formatFileSize = (size: number) => {
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -242,8 +274,23 @@ export default function SendsPage() {
               ) : null}
               <TextField label="名称" value={name} onChange={(event) => setName(event.target.value)} />
               <TextField label="备注" value={notes} onChange={(event) => setNotes(event.target.value)} />
-              {!editing ? <TextField label="访问密码（可选）" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /> : null}
+              {!editing ? (
+                <TextField label="访问密码（可选）" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+              ) : (
+                <Stack spacing={1}>
+                  <TextField label="新访问密码（留空保持不变）" type="password" value={password} disabled={removePassword} onChange={(event) => setPassword(event.target.value)} />
+                  <FormControlLabel control={<Checkbox checked={removePassword} onChange={(event) => { setRemovePassword(event.target.checked); if (event.target.checked) setPassword(""); }} />} label="移除访问密码" />
+                </Stack>
+              )}
               <TextField label="最大访问次数（可选）" type="number" slotProps={{ htmlInput: { min: 1 } }} value={maxAccessCount} onChange={(event) => setMaxAccessCount(event.target.value)} />
+              <TextField
+                label="删除时间"
+                type="datetime-local"
+                value={deletionDate}
+                onChange={(event) => setDeletionDate(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                helperText="到期后分享链接自动失效，且无法再访问。"
+              />
               {!editing && type === "text" ? <TextField label="分享文本" multiline minRows={5} value={text} onChange={(event) => setText(event.target.value)} /> : null}
               {!editing && type === "file" ? (
                 <Box>

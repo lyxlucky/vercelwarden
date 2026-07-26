@@ -36,10 +36,16 @@ function serializedFile(file: typeof sendFiles.$inferSelect | null | undefined) 
   return {
     id: file.uuid,
     fileName: file.fileName,
-    size: String(file.fileSize),
+    // Display the PLAINTEXT size for new raw-binary Sends; fall back to the
+    // encrypted size for legacy / official-client Sends (plaintextSize NULL).
+    // The private streaming download route keeps using the real blob size for
+    // Content-Length, so integrity is unaffected.
+    size: String(file.plaintextSize ?? file.fileSize),
     sizeName: null,
     key: file.key,
     checksum: file.checksum,
+    // Lets the public client pick raw-binary vs legacy base64 decode.
+    plaintextSize: file.plaintextSize,
   };
 }
 

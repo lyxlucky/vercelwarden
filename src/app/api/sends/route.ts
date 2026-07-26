@@ -6,7 +6,7 @@ import { verifyAuth, newUuid } from "@/lib/auth";
 import { unauthorized, errorResponse } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
 import { commitUserMutation } from "@/lib/server/mutations/commit";
-import { deleteSendBlobs, hashSendPassword } from "@/lib/server/sends/service";
+import { deleteSendFileBlobs, hashSendPassword } from "@/lib/server/sends/service";
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
 
@@ -98,19 +98,21 @@ export async function DELETE(request: NextRequest) {
   if (ids.length === 0) return errorResponse("ids is required");
   const owned = await db.select().from(sends).where(and(eq(sends.userUuid, auth.user.uuid), inArray(sends.uuid, ids)));
   const ownedById = new Map(owned.map((send) => [send.uuid, send]));
-  const outcomes = [] as Array<{ id: string; status: "deleted" | "not_found" | "partial"; code?: string }>;
-  const ownedIds: string[] = [];
-  for (const id of ids) {
-    if (!ownedById.has(id)) {
-      outcomes.push({ id, status: "not_found", code: "not_found" });
-      continue;
-    }
-    const blobs = await deleteSendBlobs(id);
-    ownedIds.push(id);
-    outcomes.push(blobs.some((item) => item.status !== "deleted")
-      ? { id, status: "partial", code: "blob_cleanup_failed" }
-      : { id, status: "deleted" });
+  const ownedIds = owned.map((send) => send.uuid);
+  // Capture blob URLs BEFORE deleting the rows — deletion cascades the file rows
+  // away, so they must be read up front to be cleaned afterward.
+  const ownedFiles = ownedIds.length
+    ? await db.select().from(sendFiles).where(inArray(sendFiles.sendUuid, ownedIds))
+    : [];
+  const filesBySend = new Map<string, typeof ownedFiles>();
+  for (const file of ownedFiles) {
+    const list = filesBySend.get(file.sendUuid) ?? [];
+    list.push(file);
+    filesBySend.set(file.sendUuid, list);
   }
+  // Delete rows first and commit; only then remove blobs, so a blob failure can
+  // never leave an undeletable send row behind (previously blobs were deleted
+  // first and a rolled-back transaction orphaned the row from its file).
   if (ownedIds.length > 0) {
     await commitUserMutation({
       userUuid: auth.user.uuid,
@@ -123,6 +125,17 @@ export async function DELETE(request: NextRequest) {
         ));
       },
     });
+  }
+  const outcomes = [] as Array<{ id: string; status: "deleted" | "not_found" | "partial"; code?: string }>;
+  for (const id of ids) {
+    if (!ownedById.has(id)) {
+      outcomes.push({ id, status: "not_found", code: "not_found" });
+      continue;
+    }
+    const blobs = await deleteSendFileBlobs(filesBySend.get(id) ?? []);
+    outcomes.push(blobs.some((item) => item.status !== "deleted")
+      ? { id, status: "partial", code: "blob_cleanup_failed" }
+      : { id, status: "deleted" });
   }
   const succeeded = outcomes.filter((outcome) => outcome.status === "deleted").length;
   return NextResponse.json({ object: "bulkSendDelete", succeeded, failed: outcomes.length - succeeded, outcomes }, { headers: noStore });

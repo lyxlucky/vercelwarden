@@ -253,6 +253,53 @@ export async function decryptTextWithUserKey(value: string, userKey: Uint8Array)
   }
 }
 
+// Raw-binary AEAD for Send file bodies. Byte-identical construction to
+// encryptWithUserKey (AES-256-CBC + HMAC-SHA256, key = enc[0:32] || mac[32:64],
+// 16-byte IV, MAC over iv||ciphertext) but WITHOUT the base64 `2.iv|ct|mac`
+// wrapper — the blob stores `iv(16) || ciphertext || mac(32)` raw, saving the
+// ~33% base64 overhead. Only the large file BODY uses this; metadata fields
+// (name/notes/fileName/text) stay Bitwarden cipher strings.
+export async function encryptBytesToBinary(plaintext: Uint8Array, userKey: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  if (userKey.length !== 64) throw new Error("A Bitwarden user key must be 64 bytes.");
+  const encryptionBytes = owned(userKey.subarray(0, 32));
+  const macBytes = owned(userKey.subarray(32, 64));
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  try {
+    const encryptionKey = await crypto.subtle.importKey("raw", encryptionBytes, "AES-CBC", false, ["encrypt"]);
+    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv }, encryptionKey, owned(plaintext)));
+    const signingKey = await crypto.subtle.importKey("raw", macBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", signingKey, concatenate(iv, ciphertext)));
+    return concatenate(concatenate(iv, ciphertext), mac);
+  } finally {
+    wipeBytes(encryptionBytes);
+    wipeBytes(macBytes);
+  }
+}
+
+export async function decryptBinaryBytes(payload: Uint8Array, userKey: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  if (userKey.length !== 64) throw new Error("A Bitwarden user key must be 64 bytes.");
+  if (payload.length < 16 + 16 + 32) throw new Error("Invalid encrypted Send file.");
+  const iv = owned(payload.subarray(0, 16));
+  const mac = owned(payload.subarray(payload.length - 32));
+  const ciphertext = owned(payload.subarray(16, payload.length - 32));
+  if (ciphertext.length === 0 || ciphertext.length % 16 !== 0) throw new Error("Invalid encrypted Send file.");
+  const encryptionBytes = owned(userKey.subarray(0, 32));
+  const macBytes = owned(userKey.subarray(32, 64));
+  try {
+    const signingKey = await crypto.subtle.importKey("raw", macBytes, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const valid = await crypto.subtle.verify("HMAC", signingKey, owned(mac), concatenate(iv, ciphertext));
+    if (!valid) throw new Error("Send file authentication failed.");
+    const encryptionKey = await crypto.subtle.importKey("raw", encryptionBytes, "AES-CBC", false, ["decrypt"]);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-CBC", iv: owned(iv) }, encryptionKey, owned(ciphertext)));
+  } finally {
+    wipeBytes(encryptionBytes);
+    wipeBytes(macBytes);
+    wipeBytes(iv);
+    wipeBytes(ciphertext);
+    wipeBytes(mac);
+  }
+}
+
 export async function unwrapVaultKey(value: string, masterKey: Uint8Array): Promise<Uint8Array> {
   const decoded = decodeCipherString(value);
   const stretched = await stretchMasterKey(masterKey);

@@ -230,7 +230,10 @@ export const sends = sqliteTable(
   },
   (table) => [
     index("sends_user_updated_idx").on(table.userUuid, table.updatedAt),
-    index("sends_public_access_idx").on(table.uuid, table.disabled, table.deletionDate, table.expirationDate),
+    // Maintenance GC scans `WHERE deletion_date < now` across all users; index
+    // deletionDate directly. (The old (uuid, ...) composite led with the primary
+    // key and was redundant for the by-accessId point lookup.)
+    index("sends_deletion_date_idx").on(table.deletionDate),
   ]
 );
 
@@ -242,6 +245,10 @@ export const sendFiles = sqliteTable(
     fileName: text("file_name").notNull(),
     key: text("key"),
     fileSize: integer("file_size").notNull(),
+    // Plaintext byte length of the file the user selected. NULL marks a legacy
+    // (base64 cipher-string) or official-client Send; non-null marks a new
+    // raw-binary Send. Displayed to recipients; fileSize stays the encrypted size.
+    plaintextSize: integer("plaintext_size"),
     blobUrl: text("blob_url").notNull().default(""),
     status: text("status", { enum: ["pending", "complete", "failed"] }).notNull().default("pending"),
     checksum: text("checksum"),

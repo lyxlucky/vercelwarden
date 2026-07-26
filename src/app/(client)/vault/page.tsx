@@ -280,7 +280,7 @@ export default function VaultPage() {
               aria-label={selectionMode ? "批量操作" : undefined}
               aria-busy={selectionMode && mutationBusy ? true : undefined}
               sx={{
-                minHeight: 92,
+                minHeight: 76,
                 px: 2,
                 py: 1.5,
                 display: "flex",

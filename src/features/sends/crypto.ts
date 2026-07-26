@@ -9,7 +9,6 @@ function owned(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 
 export async function deriveSendContentKey(sendKeyMaterial: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   if (sendKeyMaterial.length === 0) throw new Error("A Bitwarden Send key cannot be empty.");
-  if (sendKeyMaterial.length >= 64) return owned(sendKeyMaterial.subarray(0, 64));
 
   const key = await crypto.subtle.importKey("raw", owned(sendKeyMaterial), "HKDF", false, ["deriveBits"]);
   return new Uint8Array(await crypto.subtle.deriveBits({

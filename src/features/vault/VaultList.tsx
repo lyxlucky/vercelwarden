@@ -8,7 +8,7 @@ import { Box, Checkbox, Chip, ListItemButton, ListItemText, Stack, Tooltip } fro
 import { alpha } from "@mui/material/styles";
 import { TaskState } from "@/components/feedback/TaskState";
 import type { VaultItemView } from "@/features/vault/store";
-import { VaultItemAvatar, vaultTypeLabel } from "@/features/vault/VaultVisuals";
+import { VaultItemIcon, vaultTypeLabel } from "@/features/vault/VaultVisuals";
 
 export function VaultList({ items, selectedId, checkedIds, selectionMode, onSelect, onToggle }: {
   items: VaultItemView[];
@@ -59,12 +59,25 @@ export function VaultList({ items, selectedId, checkedIds, selectionMode, onSele
                   borderRadius: 2,
                   px: 1,
                   py: 0.5,
-                  borderBottom: 1,
-                  borderColor: "divider",
-                  transition: (theme) => theme.transitions.create(["background-color", "box-shadow"]),
+                  position: "relative",
+                  transition: (theme) => theme.transitions.create(["background-color"], { duration: theme.transitions.duration.shortest }),
+                  // Text-aligned hairline divider that yields to hover and selection,
+                  // instead of a hard border fighting the rounded highlight.
+                  "&::after": {
+                    content: '""',
+                    position: "absolute",
+                    left: 60,
+                    right: 8,
+                    bottom: 0,
+                    height: "1px",
+                    bgcolor: "divider",
+                    transition: (theme) => theme.transitions.create("opacity", { duration: theme.transitions.duration.shortest }),
+                  },
+                  "&:hover::after": { opacity: 0 },
                   "&.Mui-selected": {
                     bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.2 : 0.11),
-                    boxShadow: "inset 3px 0 0 currentColor",
+                    boxShadow: (theme) => `inset 3px 0 0 ${theme.palette.primary.main}`,
+                    "&::after": { opacity: 0 },
                     "&:hover": { bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.25 : 0.15) },
                   },
                   "&.Mui-focusVisible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
@@ -79,12 +92,12 @@ export function VaultList({ items, selectedId, checkedIds, selectionMode, onSele
                       onClick={(event) => event.stopPropagation()}
                       onChange={() => onToggle(item.id)}
                     />
-                  ) : <VaultItemAvatar type={item.type} />}
+                  ) : <VaultItemIcon type={item.type} uris={item.uris} />}
                 </Box>
                 <ListItemText
                   primary={item.name}
                   secondary={item.username || item.uris[0] || vaultTypeLabel(item.type)}
-                  slotProps={{ primary: { noWrap: true, sx: { fontWeight: 650, letterSpacing: 0.05 } }, secondary: { noWrap: true, variant: "body2" } }}
+                  slotProps={{ primary: { noWrap: true, sx: { fontWeight: 650 } }, secondary: { noWrap: true, variant: "body2" } }}
                 />
                 <Stack direction="row" sx={{ ml: 1, gap: 0.5, color: "text.secondary", alignItems: "center" }}>
                   {item.favorite ? <Tooltip title="收藏"><FavoriteOutlined sx={{ fontSize: 18 }} color="error" /></Tooltip> : null}

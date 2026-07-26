@@ -9,6 +9,8 @@ import { serializeCipher } from "@/lib/cipher";
 import { serializeSend } from "@/lib/send";
 import { serializeFolder } from "@/lib/folder";
 import { projectCipherForLegacyClient } from "@/lib/server/vault/compatibility-serializer";
+import { readStoredDomainSettings } from "@/features/domains/store";
+import { serializeDomainsForClient } from "@/features/domains/serialize";
 
 // GET /api/sync?excludeDomains=true
 // Wire format matches Vaultwarden ciphers.rs:121-202 — fully camelCase top-level
@@ -82,6 +84,13 @@ export async function GET(request: NextRequest) {
     .where(eq(userRevisions.userUuid, user.uuid))
     .limit(1);
 
+  // Equivalent-domain data for stock Bitwarden clients (autofill matching).
+  // The first-party web client requests `?excludeDomains=true` and never reads
+  // this, so it stays null on that path.
+  const clientDomains = excludeDomains
+    ? null
+    : serializeDomainsForClient(await readStoredDomainSettings(user));
+
   return NextResponse.json({
     profile: buildProfile(user),
     folders: userFolders.map(serializeFolder),
@@ -95,13 +104,7 @@ export async function GET(request: NextRequest) {
       });
       return firstPartyClient ? serialized : projectCipherForLegacyClient(serialized, c);
     }),
-    domains: excludeDomains
-      ? null
-      : {
-          equivalentDomains: JSON.parse(user.equivalentDomains),
-          globalEquivalentDomains: [],
-          object: "domains",
-        },
+    domains: clientDomains,
     sends: userSends.map((send) => serializeSend(send, fileBySend.get(send.uuid))),
     userDecryption: {
       masterPasswordUnlock,

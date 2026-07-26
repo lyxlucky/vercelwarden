@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
 import { domainSettings, users } from "@/db/schema";
 import { GLOBAL_EQUIVALENT_DOMAINS } from "@/features/domains/global-domains";
 import { normalizeDomainSettings } from "@/features/domains/domain-rules";
+import { readStoredDomainSettings } from "@/features/domains/store";
 import { buildCapabilityDocument } from "@/lib/contracts/capabilities";
 import { authenticateRequest } from "@/lib/server/authorization/authorize";
 import { ApiError, apiErrorResponse, parseJsonBody } from "@/lib/server/http/errors";
@@ -22,14 +22,6 @@ const updateSchema = z.object({
   excludedGlobalEquivalentDomains: z.array(z.number().int().nonnegative()).max(500).optional(),
 }).strict();
 
-function parsedArray<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function responseBody(settings: {
   equivalentDomains: string[][];
   customEquivalentDomains: Array<{ id: string; domains: string[]; enabled: boolean }>;
@@ -46,17 +38,7 @@ function responseBody(settings: {
 export async function GET(request: Request) {
   try {
     const auth = await authenticateRequest(request);
-    const [stored] = await db.select().from(domainSettings)
-      .where(eq(domainSettings.userUuid, auth.user.uuid)).limit(1);
-    const settings = stored ? {
-      equivalentDomains: parsedArray<string[][]>(stored.equivalentDomains, []),
-      customEquivalentDomains: parsedArray<Array<{ id: string; domains: string[]; enabled: boolean }>>(stored.customEquivalentDomains, []),
-      excludedGlobalDomainIds: parsedArray<number[]>(stored.excludedGlobalDomainIds, []),
-    } : {
-      equivalentDomains: parsedArray<string[][]>(auth.user.equivalentDomains, []),
-      customEquivalentDomains: [],
-      excludedGlobalDomainIds: parsedArray<number[]>(auth.user.excludedGlobals, []),
-    };
+    const settings = await readStoredDomainSettings(auth.user);
     return Response.json(responseBody(settings), { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     return apiErrorResponse(error);

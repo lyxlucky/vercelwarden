@@ -8,8 +8,14 @@ import { motionTimeout, useReducedMotion } from "@/components/motion/useReducedM
 
 export type MobilePane = "navigation" | "list" | "detail";
 
-const navigationWidth = 280;
-const listWidth = 408;
+// Column widths scale with the viewport so the detail pane keeps a usable width
+// at the md breakpoint instead of being crushed by fixed 280 + 408 tracks.
+const gridColumns = {
+  xs: "minmax(0, 1fr)",
+  md: "232px 336px minmax(0, 1fr)",
+  lg: "264px 384px minmax(0, 1fr)",
+  xl: "280px 408px minmax(0, 1fr)",
+};
 
 export function AppShell({
   header,
@@ -55,7 +61,7 @@ export function AppShell({
         height: "100%",
         display: "grid",
         gridTemplateRows: "64px minmax(0, 1fr)",
-        gridTemplateColumns: { xs: "minmax(0, 1fr)", md: `${navigationWidth}px ${listWidth}px minmax(0, 1fr)` },
+        gridTemplateColumns: gridColumns,
         gridTemplateAreas: { xs: '"header" "content"', md: '"header header header" "navigation list detail"' },
         overflow: "hidden",
         bgcolor: "background.default",

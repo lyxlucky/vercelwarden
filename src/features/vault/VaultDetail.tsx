@@ -43,7 +43,7 @@ import { alpha } from "@mui/material/styles";
 import { TaskState } from "@/components/feedback/TaskState";
 import { verifyMasterPassword } from "@/features/auth/api";
 import type { VaultItemView } from "@/features/vault/store";
-import { VaultItemAvatar, VaultSection, vaultTypeLabel } from "@/features/vault/VaultVisuals";
+import { VaultItemIcon, VaultSection, vaultTypeLabel } from "@/features/vault/VaultVisuals";
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -158,20 +158,20 @@ export function VaultDetail({ item, onEdit, onAction }: {
 
   return (
     <>
-      <Box component="article" sx={{ width: "100%", maxWidth: 960, mx: "auto", px: { xs: 2, sm: 3, lg: 4 }, py: { xs: 1.5, sm: 3 } }}>
+      <Box component="article" sx={{ width: "100%", maxWidth: 960, mx: "auto", px: { xs: 2, sm: 3, lg: 4 }, py: { xs: 1.5, sm: 3 }, containerType: "inline-size", containerName: "vaultDetail" }}>
         <Stack spacing={2.5}>
-          <Stack component="header" direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "stretch", sm: "center" }, justifyContent: "space-between", gap: 2, py: { xs: 1, sm: 1.5 }, borderBottom: 1, borderColor: "divider", pb: 2.5 }}>
+          <Stack component="header" sx={{ flexDirection: "column", alignItems: "stretch", justifyContent: "space-between", gap: 2, py: { xs: 1, sm: 1.5 }, borderBottom: 1, borderColor: "divider", pb: 2.5, "@container vaultDetail (min-width: 560px)": { flexDirection: "row", alignItems: "center" } }}>
             <Stack direction="row" sx={{ alignItems: "center", gap: 2, minWidth: 0 }}>
-              <VaultItemAvatar type={item.type} size={56} />
+              <VaultItemIcon type={item.type} uris={item.uris} size={56} />
               <Box sx={{ minWidth: 0 }}>
                 <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                  <Typography component="h1" variant="h1" sx={{ overflowWrap: "anywhere" }}>{item.name}</Typography>
+                  <Typography component="h1" variant="h1" sx={{ overflowWrap: "anywhere", fontSize: { xs: "1.35rem", sm: "1.6rem" }, lineHeight: 1.25 }}>{item.name}</Typography>
                   {item.favorite ? <Chip icon={<FavoriteOutlined />} color="error" label="收藏" size="small" variant="outlined" /> : null}
                 </Stack>
                 <Typography color="text.secondary" sx={{ mt: 0.5 }}>{vaultTypeLabel(item.type)}</Typography>
               </Box>
             </Stack>
-            <Stack direction="row" sx={{ alignSelf: { xs: "stretch", sm: "center" }, gap: 1, flexWrap: "wrap" }}>
+            <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", alignSelf: "stretch", "@container vaultDetail (min-width: 560px)": { alignSelf: "center" } }}>
               {item.deletedAt ? (
                 <>
                   <Button variant="contained" startIcon={<RestoreOutlined />} onClick={() => onAction?.("restore", item)}>恢复项目</Button>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import { db } from "@/db";
 import { sendFiles, sends } from "@/db/schema";
@@ -8,11 +8,12 @@ import { errorResponse, unauthorized } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
 import {
   cleanupExpiredPendingSendFiles,
+  confirmSendFileUpload,
   hashSendPassword,
   issueSendFileUploadCredential,
+  sendFileBlobPath,
   sha256SendFile,
   validateSendFileMetadata,
-  verifySendFileUploadCredential,
 } from "@/lib/server/sends/service";
 import {
   beginIdempotentRequest,
@@ -73,7 +74,7 @@ async function insertFileSend(input: {
         data: JSON.stringify({
           id: input.fileUuid,
           fileName: input.metadata.fileName,
-          size: input.metadata.fileSize,
+          size: input.metadata.plaintextSize ?? input.metadata.fileSize,
           key: input.metadata.key,
         }),
         key: String(input.model.key ?? input.model.Key ?? ""),
@@ -93,6 +94,7 @@ async function insertFileSend(input: {
         fileName: input.metadata.fileName,
         key: input.metadata.key,
         fileSize: input.metadata.fileSize,
+        plaintextSize: input.metadata.plaintextSize,
         blobUrl: input.blobUrl ?? "",
         status: input.status,
         checksum: input.metadata.checksum,
@@ -183,6 +185,7 @@ export async function POST(request: NextRequest) {
     const sendUuid = newUuid();
     const fileUuid = newUuid();
     const credential = issueSendFileUploadCredential();
+    const pathname = sendFileBlobPath(auth.user.uuid, sendUuid, fileUuid);
     const inserted = await insertFileSend({
       userUuid: auth.user.uuid,
       actingDeviceIdentifier: auth.device.identifier,
@@ -191,6 +194,7 @@ export async function POST(request: NextRequest) {
       sendUuid,
       fileUuid,
       status: "pending",
+      blobUrl: pathname,
       uploadTokenHash: credential.tokenHash,
       uploadExpiresAt: credential.expiresAt,
     });
@@ -199,7 +203,7 @@ export async function POST(request: NextRequest) {
       send: serializeSend(inserted.created, inserted.file),
       sendId: sendUuid,
       fileId: fileUuid,
-      uploadUrl: "/api/sends/file",
+      pathname,
       uploadToken: credential.token,
       expiresAt: credential.expiresAt.toISOString(),
     };
@@ -210,39 +214,29 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PUT /api/sends/file — confirm a client-direct-to-Blob upload has finished.
+// The bytes went straight to Blob storage (bypassing the ~4.5MB function body
+// limit); this call verifies the blob via head() and flips the row to complete.
+// Idempotent and safe to race with the onUploadCompleted webhook.
 export async function PUT(request: NextRequest) {
   const auth = await verifyAuth(request.headers.get("authorization"));
   if (!auth) return unauthorized();
-  const sendUuid = request.headers.get("x-send-id") ?? "";
-  const fileUuid = request.headers.get("x-file-id") ?? "";
-  const token = request.headers.get("x-upload-token") ?? "";
-  const [send] = await db.select().from(sends).where(and(eq(sends.uuid, sendUuid), eq(sends.userUuid, auth.user.uuid))).limit(1);
-  if (!send || send.type !== 1) return errorResponse("Pending Send not found", 404);
-  const [file] = await db.select().from(sendFiles).where(and(eq(sendFiles.uuid, fileUuid), eq(sendFiles.sendUuid, sendUuid))).limit(1);
-  if (!file || file.status !== "pending") return errorResponse("Pending Send file not found", 404);
-  if (!verifySendFileUploadCredential(token, file.uploadTokenHash, file.uploadExpiresAt)) return errorResponse("Send upload token is invalid or expired", 401);
-  const payload = await request.arrayBuffer();
-  if (payload.byteLength !== file.fileSize) return errorResponse("Send upload size does not match metadata");
-  const checksum = sha256SendFile(payload);
-  if (file.checksum && file.checksum !== checksum) return errorResponse("Send file checksum mismatch");
-  const blob = await put(`sends/${auth.user.uuid}/${sendUuid}/${fileUuid}`, new Blob([payload]), { access: "private", addRandomSuffix: false });
-  const now = new Date();
-  await commitUserMutation({
+  const body = (await request.json().catch(() => null)) as { sendId?: string; fileId?: string } | null;
+  const sendId = body?.sendId;
+  const fileId = body?.fileId;
+  if (!sendId || !fileId) return errorResponse("sendId and fileId are required");
+  const result = await confirmSendFileUpload({
     userUuid: auth.user.uuid,
-    resourceKind: "send",
-    resourceId: sendUuid,
+    sendUuid: sendId,
+    fileUuid: fileId,
     actingDeviceIdentifier: auth.device.identifier,
-    mutate: async (tx) => {
-      await tx.update(sendFiles).set({
-        blobUrl: blob.url,
-        status: "complete",
-        checksum,
-        uploadTokenHash: null,
-        uploadExpiresAt: null,
-        completedAt: now,
-      }).where(eq(sendFiles.uuid, fileUuid));
-      await tx.update(sends).set({ updatedAt: now }).where(eq(sends.uuid, sendUuid));
-    },
   });
-  return NextResponse.json({ object: "sendFile", sendId: sendUuid, fileId: fileUuid, status: "complete", checksum }, { headers: noStore });
+  if (!result.ok) return errorResponse(result.message, result.status);
+  return NextResponse.json({
+    object: "sendFile",
+    send: serializeSend(result.send, result.file),
+    sendId,
+    fileId,
+    status: "complete",
+  }, { headers: noStore });
 }

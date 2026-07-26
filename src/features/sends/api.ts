@@ -1,9 +1,12 @@
 "use client";
 
 import { apiClient } from "@/lib/client/api/client";
+import { upload } from "@vercel/blob/client";
 import {
+  decryptBinaryBytes,
   decryptTextWithUserKey,
   decryptWithUserKey,
+  encryptBytesToBinary,
   encryptWithUserKey,
   wipeBytes,
 } from "@/lib/client/crypto/auth";
@@ -15,6 +18,7 @@ interface WireSendFile {
   id: string;
   fileName: string;
   size: string;
+  plaintextSize?: number | null;
   key?: string | null;
   checksum?: string | null;
   downloadToken?: string;
@@ -161,41 +165,12 @@ export async function createTextSend(input: CreateSendInput & { text: string }) 
       ...await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey),
       text: { text: await encryptWithUserKey(new TextEncoder().encode(input.text), contentKey), hidden: false },
     } });
-    return decryptSend(wire, vaultKey);
+    return await decryptSend(wire, vaultKey);
   } finally {
     wipeBytes(contentKey);
     wipeBytes(sendKeyMaterial);
     wipeBytes(vaultKey);
   }
-}
-
-function uploadErrorMessage(request: XMLHttpRequest) {
-  const fallback = `Send 文件上传失败（${request.status}）。`;
-  if (!request.responseText) return fallback;
-  try {
-    const body = JSON.parse(request.responseText) as { message?: unknown };
-    return typeof body.message === "string" && body.message.trim() ? body.message : fallback;
-  } catch {
-    return request.responseText.trim() || fallback;
-  }
-}
-
-function uploadFile(url: string, bytes: Uint8Array<ArrayBuffer>, headers: Record<string, string>, onProgress?: (progress: SendTransferProgress) => void) {
-  return new Promise<void>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", url);
-    const token = sessionStore.getAccessToken();
-    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
-    request.setRequestHeader("Content-Type", "application/octet-stream");
-    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
-    request.upload.onprogress = (event) => report(onProgress, "uploading", event.loaded, event.total || bytes.byteLength);
-    request.onerror = () => reject(new Error("Send 文件上传中断，请重试。"));
-    request.onabort = () => reject(new Error("Send 文件上传已取消。"));
-    request.onload = () => request.status >= 200 && request.status < 300
-      ? resolve()
-      : reject(new Error(uploadErrorMessage(request)));
-    request.send(bytes);
-  });
 }
 
 export async function createFileSend(input: CreateSendInput & { file: File }, onProgress?: (progress: SendTransferProgress) => void) {
@@ -203,74 +178,106 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
   if (!vaultKey) throw new Error("Vault key unavailable.");
   const sendKeyMaterial = crypto.getRandomValues(new Uint8Array(16));
   let contentKey: Uint8Array | undefined;
-  let encryptedBytes: Uint8Array<ArrayBuffer> | undefined;
+  let binary: Uint8Array<ArrayBuffer> | undefined;
   let pendingSendId: string | undefined;
+  let confirmed = false;
   try {
     contentKey = await deriveSendContentKey(sendKeyMaterial);
     report(onProgress, "encrypting", 0, input.file.size);
     const plaintext = new Uint8Array(await input.file.arrayBuffer());
-    const encrypted = await encryptWithUserKey(plaintext, contentKey);
+    binary = await encryptBytesToBinary(plaintext, contentKey);
     plaintext.fill(0);
-    encryptedBytes = new TextEncoder().encode(encrypted);
     const encryptedName = await encryptWithUserKey(new TextEncoder().encode(input.file.name), contentKey);
-    const checksum = await sha256Hex(encryptedBytes);
+    const checksum = await sha256Hex(binary);
     report(onProgress, "encrypting", input.file.size, input.file.size);
-    const pending = await apiClient<{ send: WireSend; sendId: string; fileId: string; uploadUrl: string; uploadToken: string }>("/api/sends/file", {
+    // 1. Reserve a pending Send + file row and get the pinned upload path/token.
+    const pending = await apiClient<{ send: WireSend; sendId: string; fileId: string; pathname: string; uploadToken: string }>("/api/sends/file", {
       method: "POST",
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: {
         type: 1,
         ...await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey),
-        file: { fileName: encryptedName, size: encryptedBytes.byteLength, checksum, key: null },
+        file: { fileName: encryptedName, size: binary.byteLength, plaintextSize: input.file.size, checksum, key: null },
       },
     });
     pendingSendId = pending.sendId;
-    await uploadFile(pending.uploadUrl, encryptedBytes, {
-      "X-Send-Id": pending.sendId,
-      "X-File-Id": pending.fileId,
-      "X-Upload-Token": pending.uploadToken,
-    }, onProgress);
+    // 2. Upload the encrypted bytes straight to Blob storage, bypassing the
+    //    ~4.5MB serverless body limit; the token route authorizes this path.
+    const token = sessionStore.getAccessToken();
+    await upload(pending.pathname, new Blob([binary]), {
+      access: "private",
+      handleUploadUrl: "/api/sends/file/upload-token",
+      multipart: true,
+      contentType: "application/octet-stream",
+      clientPayload: JSON.stringify({ sendId: pending.sendId, fileId: pending.fileId, uploadToken: pending.uploadToken }),
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      onUploadProgress: (event) => report(onProgress, "uploading", event.loaded, event.total),
+    });
+    // 3. Confirm — the server head()s the blob and flips the row to complete.
+    const confirm = await apiClient<{ send: WireSend }>("/api/sends/file", { method: "PUT", body: { sendId: pending.sendId, fileId: pending.fileId } });
+    confirmed = true;
     report(onProgress, "complete", input.file.size, input.file.size);
-    const sends = await listSends();
-    return sends.find((send) => send.id === pending.sendId) ?? decryptSend(pending.send, vaultKey);
+    return await decryptSend(confirm.send, vaultKey);
   } catch (error) {
-    if (pendingSendId) {
+    // Roll back ONLY before the upload is confirmed. Once confirmed the Send is
+    // fully created — a later failure must never delete it.
+    if (pendingSendId && !confirmed) {
       await apiClient(`/api/sends/${encodeURIComponent(pendingSendId)}`, { method: "DELETE" }).catch(() => undefined);
     }
     throw error;
   } finally {
-    wipeBytes(encryptedBytes);
+    wipeBytes(binary);
     wipeBytes(contentKey);
     wipeBytes(sendKeyMaterial);
     wipeBytes(vaultKey);
   }
 }
 
-export async function updateSend(id: string, input: Partial<CreateSendInput> & { name?: string; notes?: string }) {
+export async function updateSend(
+  id: string,
+  input: {
+    name?: string;
+    notes?: string;
+    maxAccessCount?: number | null;
+    expirationDate?: string | null;
+    deletionDate?: string;
+    disabled?: boolean;
+    hideEmail?: boolean;
+    // string sets a new access password; null clears it; undefined leaves it.
+    password?: string | null;
+  }
+) {
   const vaultKey = authSecretStore.getVaultKey();
   if (!vaultKey) throw new Error("Vault key unavailable.");
   try {
-    const wire = await apiClient<WireSend>(`/api/sends/${encodeURIComponent(id)}`);
-    const sendKeyMaterial = await decryptWithUserKey(wire.key, vaultKey);
-    let contentKey: Uint8Array | undefined;
-    try {
-      contentKey = await deriveSendContentKey(sendKeyMaterial);
-      const body: Record<string, unknown> = {
-        maxAccessCount: input.maxAccessCount,
-        expirationDate: input.expirationDate,
-        deletionDate: input.deletionDate,
-        disabled: input.disabled,
-        hideEmail: input.hideEmail,
-      };
-      if (input.name !== undefined) body.name = await encryptWithUserKey(new TextEncoder().encode(input.name), contentKey);
-      if (input.notes !== undefined) body.notes = input.notes ? await encryptWithUserKey(new TextEncoder().encode(input.notes), contentKey) : null;
-      await apiClient(`/api/sends/${encodeURIComponent(id)}`, { method: "PUT", body });
-    } finally {
-      wipeBytes(contentKey);
-      wipeBytes(sendKeyMaterial);
+    const body: Record<string, unknown> = {
+      maxAccessCount: input.maxAccessCount,
+      expirationDate: input.expirationDate,
+      deletionDate: input.deletionDate,
+      disabled: input.disabled,
+      hideEmail: input.hideEmail,
+      password: input.password,
+    };
+    // Re-encrypting name/notes needs the Send's content key; only fetch it when
+    // those actually change (metadata-only edits skip the extra round-trip).
+    if (input.name !== undefined || input.notes !== undefined) {
+      const wire = await apiClient<WireSend>(`/api/sends/${encodeURIComponent(id)}`);
+      const sendKeyMaterial = await decryptWithUserKey(wire.key, vaultKey);
+      let contentKey: Uint8Array | undefined;
+      try {
+        contentKey = await deriveSendContentKey(sendKeyMaterial);
+        if (input.name !== undefined) body.name = await encryptWithUserKey(new TextEncoder().encode(input.name), contentKey);
+        if (input.notes !== undefined) body.notes = input.notes ? await encryptWithUserKey(new TextEncoder().encode(input.notes), contentKey) : null;
+      } finally {
+        wipeBytes(contentKey);
+        wipeBytes(sendKeyMaterial);
+      }
     }
-    return listSends();
-  } finally { wipeBytes(vaultKey); }
+    const updated = await apiClient<WireSend>(`/api/sends/${encodeURIComponent(id)}`, { method: "PUT", body });
+    return await decryptSend(updated, vaultKey);
+  } finally {
+    wipeBytes(vaultKey);
+  }
 }
 
 export async function deleteSend(id: string) {
@@ -286,7 +293,7 @@ export async function deleteSends(ids: string[]) {
 
 export type PublicSend =
   | { type: "text"; name: string; text: string }
-  | { type: "file"; name: string; file: { id: string; fileName: string; size: number; downloadToken: string; checksum: string | null }; sendKey: Uint8Array };
+  | { type: "file"; name: string; file: { id: string; fileName: string; size: number; checksum: string | null; encoding: "binary" | "legacy" }; sendKey: Uint8Array };
 
 export type PublicSendAccessErrorCode = "password_required" | "invalid_password" | "unavailable";
 
@@ -325,7 +332,7 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
       const text = send.text?.text ? await decryptTextWithUserKey(send.text.text, contentKey) : "";
       return { type: "text", name, text };
     }
-    if (!send.file?.id || !send.file.downloadToken) throw new Error("分享文件不可用。");
+    if (!send.file?.id) throw new Error("分享文件不可用。");
     const fileName = await decryptTextWithUserKey(send.file.fileName, contentKey);
     retainContentKey = true;
     return {
@@ -335,8 +342,10 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
         id: send.file.id,
         fileName,
         size: Number(send.file.size),
-        downloadToken: send.file.downloadToken,
         checksum: send.file.checksum ?? null,
+        // New Sends carry plaintextSize and use the raw-binary body; legacy /
+        // official-client Sends (no plaintextSize) are base64 cipher strings.
+        encoding: send.file.plaintextSize != null ? "binary" : "legacy",
       },
       sendKey: contentKey,
     };
@@ -346,25 +355,26 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
   }
 }
 
-export async function downloadPublicSendFile(accessId: string, send: Extract<PublicSend, { type: "file" }>, onProgress?: (progress: SendTransferProgress) => void) {
+export async function downloadPublicSendFile(accessId: string, send: Extract<PublicSend, { type: "file" }>, password?: string, onProgress?: (progress: SendTransferProgress) => void) {
   try {
     report(onProgress, "downloading", 0, send.file.size);
     const authorization = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}/file/${encodeURIComponent(send.file.id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ downloadToken: send.file.downloadToken }),
+      body: JSON.stringify({ password: password || undefined }),
       cache: "no-store",
     });
     if (!authorization.ok) throw new Error("文件下载授权已失效。");
     const metadata = await authorization.json() as { url: string; checksum: string | null };
     const response = await fetch(metadata.url, { cache: "no-store", credentials: "omit" });
     if (!response.ok) throw new Error(`文件下载失败（${response.status}）。`);
-    const encrypted = await response.text();
-    const encryptedBytes = new TextEncoder().encode(encrypted);
+    const encryptedBytes = new Uint8Array(await response.arrayBuffer());
     if (metadata.checksum && await sha256Hex(encryptedBytes) !== metadata.checksum) throw new Error("文件完整性校验失败。");
     report(onProgress, "downloading", send.file.size, send.file.size);
     report(onProgress, "decrypting", 0, send.file.size);
-    const plaintext = await decryptWithUserKey(encrypted, send.sendKey);
+    const plaintext = send.file.encoding === "legacy"
+      ? await decryptWithUserKey(new TextDecoder().decode(encryptedBytes), send.sendKey)
+      : await decryptBinaryBytes(encryptedBytes, send.sendKey);
     const downloadBytes = new Uint8Array(plaintext);
     const url = URL.createObjectURL(new Blob([downloadBytes.buffer]));
     const anchor = document.createElement("a");

@@ -54,6 +54,10 @@ export async function POST(
   let token = body.downloadToken ?? "";
   let claims = verifySendFileDownloadToken(token);
   if (!claims) {
+    // Confirm the file is actually downloadable BEFORE consuming an access, so
+    // an unavailable/incomplete file never burns the recipient's access count.
+    const ready = await completeFile(sendUuid, fileId);
+    if (!ready) return notFound("File not found");
     const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, body.password));
     if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
     if (result.status !== "ok" || result.send.type !== 1) return notFound("Send not found or no longer available");

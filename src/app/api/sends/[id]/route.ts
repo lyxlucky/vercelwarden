@@ -6,7 +6,7 @@ import { verifyAuth } from "@/lib/auth";
 import { jsonResponse, unauthorized, notFound, errorResponse } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
 import { commitUserMutation } from "@/lib/server/mutations/commit";
-import { deleteSendBlobs, hashSendPassword } from "@/lib/server/sends/service";
+import { deleteSendFileBlobs, hashSendPassword } from "@/lib/server/sends/service";
 
 // GET /api/sends/[id]
 export async function GET(
@@ -67,11 +67,13 @@ export async function PUT(
     body.maxAccessCount !== undefined ||
     body.MaxAccessCount !== undefined;
   const maxAccessRaw = body.maxAccessCount ?? body.MaxAccessCount;
-  const maxAccess = typeof maxAccessRaw === "number"
-    ? maxAccessRaw
-    : typeof maxAccessRaw === "string"
-      ? parseInt(maxAccessRaw)
-      : null;
+  // Parse defensively: a non-numeric value clears the cap (null) rather than
+  // writing NaN. Matches the POST route's optionalCount behavior.
+  const maxAccess = (() => {
+    if (maxAccessRaw == null || maxAccessRaw === "") return null;
+    const parsed = typeof maxAccessRaw === "number" ? maxAccessRaw : Number(maxAccessRaw);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  })();
   const password = passwordProvided
     ? await hashSendPassword(((body.password ?? body.Password) as string | null) ?? null)
     : existing.password;
@@ -142,7 +144,10 @@ export async function DELETE(
     .limit(1);
   if (!send) return notFound("Send not found");
 
-  const blobOutcomes = await deleteSendBlobs(id);
+  // Capture file rows before deletion (which cascades them away), delete the
+  // send row inside the committed transaction, then clean up blobs — so a blob
+  // failure can't leave the row behind.
+  const files = await db.select().from(sendFiles).where(eq(sendFiles.sendUuid, id));
   await commitUserMutation({
     userUuid: auth.user.uuid,
     resourceKind: "send",
@@ -152,6 +157,7 @@ export async function DELETE(
       await tx.delete(sends).where(and(eq(sends.uuid, id), eq(sends.userUuid, auth.user.uuid)));
     },
   });
+  const blobOutcomes = await deleteSendFileBlobs(files);
   return jsonResponse({
     object: "send",
     id,

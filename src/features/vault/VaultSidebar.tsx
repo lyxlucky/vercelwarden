@@ -4,21 +4,14 @@ import type { ElementType } from "react";
 import {
   ArchiveOutlined,
   AutoAwesomeOutlined,
-  BadgeOutlined,
   ContentCopyOutlined,
-  CreditCardOutlined,
   DeleteOutlineOutlined,
-  DescriptionOutlined,
-  DriveFileRenameOutlineOutlined,
   FavoriteBorderOutlined,
   FolderOutlined,
   FolderSpecialOutlined,
   HealthAndSafetyOutlined,
   ImportExportOutlined,
-  KeyOutlined,
-  AccountBalanceOutlined,
   ListAltOutlined,
-  NoteAltOutlined,
   SendOutlined,
   TimerOutlined,
 } from "@mui/icons-material";
@@ -36,6 +29,7 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AppLink } from "@/components/theme/AppLink";
+import { vaultTypeIcon } from "@/features/vault/VaultVisuals";
 import type { VaultFilter, VaultFolderView } from "@/features/vault/store";
 
 interface Counts {
@@ -48,15 +42,15 @@ interface Counts {
   folders: Record<string, number>;
 }
 
-const typeRows: Array<{ type: number; label: string; icon: ElementType }> = [
-  { type: 1, label: "登录", icon: KeyOutlined },
-  { type: 2, label: "安全笔记", icon: DescriptionOutlined },
-  { type: 3, label: "银行卡", icon: CreditCardOutlined },
-  { type: 4, label: "身份", icon: BadgeOutlined },
-  { type: 5, label: "SSH 密钥", icon: DriveFileRenameOutlineOutlined },
-  { type: 6, label: "银行账户", icon: AccountBalanceOutlined },
-  { type: 7, label: "驾驶证", icon: NoteAltOutlined },
-  { type: 8, label: "护照", icon: BadgeOutlined },
+const typeRows: Array<{ type: number; label: string }> = [
+  { type: 1, label: "登录" },
+  { type: 2, label: "安全笔记" },
+  { type: 3, label: "银行卡" },
+  { type: 4, label: "身份" },
+  { type: 5, label: "SSH 密钥" },
+  { type: 6, label: "银行账户" },
+  { type: 7, label: "驾驶证" },
+  { type: 8, label: "护照" },
 ];
 
 function isActive(current: VaultFilter, candidate: VaultFilter) {
@@ -175,7 +169,7 @@ export function VaultSidebar({ filter, counts, folders, onFilterChange, onManage
       </List>
 
       <List disablePadding subheader={<SectionHeader>类型</SectionHeader>}>
-        {typeRows.map((row) => <ViewButton key={row.type} icon={row.icon} label={row.label} count={counts.types[row.type] ?? 0} active={filter.kind === "type" && filter.type === row.type} onClick={() => onFilterChange({ kind: "type", type: row.type })} />)}
+        {typeRows.map((row) => <ViewButton key={row.type} icon={vaultTypeIcon(row.type)} label={row.label} count={counts.types[row.type] ?? 0} active={filter.kind === "type" && filter.type === row.type} onClick={() => onFilterChange({ kind: "type", type: row.type })} />)}
       </List>
 
       <List
