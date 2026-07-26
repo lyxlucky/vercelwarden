@@ -1,8 +1,10 @@
 import "server-only";
+import { waitUntil } from "@vercel/functions";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { userRevisions } from "@/db/schema";
 import { publishNotification } from "@/lib/server/notifications/service";
+import { recordNotificationMetric } from "@/lib/server/notifications/observability";
 
 type DatabaseTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -16,6 +18,23 @@ export interface MutationNotification extends RevisionStamp {
   resourceKind: string;
   resourceId?: string;
   actingDeviceIdentifier?: string;
+}
+
+export function scheduleMutationNotification(
+  event: MutationNotification,
+  notify: (event: MutationNotification) => Promise<void> | void,
+  defer: (promise: Promise<unknown>) => void | undefined = waitUntil
+): Promise<void> {
+  const notification = Promise.resolve()
+    .then(() => notify(event))
+    .catch((error) => {
+      recordNotificationMetric("broker_publish_failure", {
+        detail: error instanceof Error ? error.name : "unknown",
+        resourceKind: event.resourceKind,
+      }, "warn");
+    });
+  defer(notification);
+  return notification;
 }
 
 export async function commitUserMutation<T>(input: {
@@ -50,17 +69,13 @@ export async function commitUserMutation<T>(input: {
 
   const notify = input.notify ?? publishNotification;
   if (notify) {
-    try {
-      await notify({
-        ...committed.revision,
-        userUuid: input.userUuid,
-        resourceKind: input.resourceKind,
-        resourceId: input.resourceId,
-        actingDeviceIdentifier: input.actingDeviceIdentifier,
-      });
-    } catch (error) {
-      console.warn("Mutation notification failed", error instanceof Error ? error.name : "unknown");
-    }
+    scheduleMutationNotification({
+      ...committed.revision,
+      userUuid: input.userUuid,
+      resourceKind: input.resourceKind,
+      resourceId: input.resourceId,
+      actingDeviceIdentifier: input.actingDeviceIdentifier,
+    }, notify);
   }
   return committed;
 }

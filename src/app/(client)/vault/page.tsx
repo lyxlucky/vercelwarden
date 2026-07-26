@@ -17,7 +17,6 @@ import {
   RefreshOutlined,
   RestoreOutlined,
   SearchOutlined,
-  SecurityOutlined,
   SelectAllOutlined,
   SettingsOutlined,
 } from "@mui/icons-material";
@@ -41,6 +40,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { BrandLockup } from "@/components/brand/BrandLogo";
 import { AppShell, type MobilePane } from "@/components/shell/AppShell";
 import { RouteGuard } from "@/components/shell/RouteGuard";
 import { AppLink } from "@/components/theme/AppLink";
@@ -247,11 +247,11 @@ export default function VaultPage() {
           <Stack direction="row" sx={{ width: "100%", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
             <Stack direction="row" sx={{ alignItems: "center", minWidth: 0, gap: 1.25 }}>
               <Tooltip title="打开密码库视图"><IconButton aria-label="打开密码库视图" onClick={() => setMobilePane("navigation")} sx={{ display: { md: "none" } }}><MenuOutlined /></IconButton></Tooltip>
-              <Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 2, bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12), color: "primary.main", border: 1, borderColor: (theme) => alpha(theme.palette.primary.main, 0.32) }}><SecurityOutlined /></Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 800, lineHeight: 1.1, letterSpacing: -0.2 }}>VercelWarden</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>个人密码库</Typography>
-              </Box>
+              <BrandLockup
+                subtitle="个人密码库"
+                markSize={36}
+                subtitleSx={{ display: { xs: "none", sm: "block" } }}
+              />
             </Stack>
             <ActionGroup compact sx={{ flex: "0 0 auto", flexWrap: "nowrap" }}>
               {session.readOnly ? <Chip size="small" color="warning" variant="outlined" label="只读" sx={{ mr: 0.5 }} /> : null}

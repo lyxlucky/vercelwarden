@@ -85,7 +85,10 @@ const itemSx = {
     bgcolor: "primary.main",
     opacity: 0,
     transform: "scaleY(0.45)",
-    transition: "opacity 160ms ease, transform 160ms ease",
+    transition: (theme: import("@mui/material/styles").Theme) => theme.transitions.create(
+      ["opacity", "transform"],
+      { duration: theme.transitions.duration.shorter, easing: theme.transitions.easing.easeOut },
+    ),
   },
   "&:active": { transform: "translateY(1px)" },
   "&.Mui-selected": {

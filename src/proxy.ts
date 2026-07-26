@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const OFFICIAL_BITWARDEN_DESKTOP_ORIGINS = new Set([
-  "bw-desktop-file://bundle",
-]);
+import {
+  configuredClientOrigins,
+  isBrowserExtensionOrigin,
+  normalizeClientOrigin,
+} from "@/lib/server/notifications/origin";
 
 const DEFAULT_ALLOWED_HEADERS = [
   "Content-Type",
@@ -23,34 +24,6 @@ const DEFAULT_ALLOWED_HEADERS = [
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
 
-function normalizeOrigin(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value.trim());
-    if (!url.protocol || !url.host) return null;
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return null;
-  }
-}
-
-function configuredOrigins(): Set<string> {
-  const origins = new Set(OFFICIAL_BITWARDEN_DESKTOP_ORIGINS);
-  for (const value of (process.env.BROWSER_EXTENSION_ORIGINS ?? "").split(",")) {
-    const origin = normalizeOrigin(value);
-    if (origin) origins.add(origin);
-  }
-  return origins;
-}
-
-function isBrowserExtensionOrigin(origin: string): boolean {
-  try {
-    return new URL(origin).protocol.endsWith("-extension:");
-  } catch {
-    return false;
-  }
-}
-
 function isPublicWildcardPath(pathname: string): boolean {
   return pathname === "/config" ||
     pathname === "/api/config" ||
@@ -62,13 +35,13 @@ function isPublicWildcardPath(pathname: string): boolean {
 }
 
 function corsOrigin(request: NextRequest): { value: string | null; credentials: boolean } {
-  const origin = normalizeOrigin(request.headers.get("origin"));
+  const origin = normalizeClientOrigin(request.headers.get("origin"));
   if (!origin) {
     return isPublicWildcardPath(request.nextUrl.pathname)
       ? { value: "*", credentials: false }
       : { value: null, credentials: false };
   }
-  if (origin === request.nextUrl.origin || isBrowserExtensionOrigin(origin) || configuredOrigins().has(origin)) {
+  if (origin === request.nextUrl.origin || isBrowserExtensionOrigin(origin) || configuredClientOrigins().has(origin)) {
     return { value: origin, credentials: true };
   }
   return isPublicWildcardPath(request.nextUrl.pathname)

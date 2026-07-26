@@ -4,7 +4,6 @@ import { useId, useState, type ReactNode } from "react";
 import DarkModeOutlined from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlined from "@mui/icons-material/LightModeOutlined";
 import SecurityOutlined from "@mui/icons-material/SecurityOutlined";
-import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlined from "@mui/icons-material/VisibilityOutlined";
 import {
@@ -19,6 +18,7 @@ import {
   type TextFieldProps,
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
+import { BrandLockup } from "@/components/brand/BrandLogo";
 import { PageTransition } from "@/components/motion/PageTransition";
 
 export function AuthShell({ children }: { children: ReactNode }) {
@@ -53,26 +53,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           borderColor: "divider",
         }}
       >
-        <Stack direction="row" spacing={1.25} aria-label="Vercelwarden" sx={{ alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 38,
-              height: 38,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 2,
-              bgcolor: "primary.main",
-              color: "primary.contrastText",
-              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.22)",
-            }}
-          >
-            <ShieldOutlined fontSize="small" aria-hidden="true" />
-          </Box>
-          <Box>
-            <Typography sx={{ fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>Vercelwarden</Typography>
-            <Typography variant="caption" color="text.secondary">安全、清晰的个人密码库</Typography>
-          </Box>
-        </Stack>
+        <BrandLockup subtitle="安全、清晰的个人密码库" markSize={40} />
         <Tooltip title={dark ? "切换为浅色外观" : "切换为深色外观"}>
           <IconButton
             aria-label={dark ? "切换为浅色外观" : "切换为深色外观"}

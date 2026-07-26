@@ -30,6 +30,7 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useParams } from "next/navigation";
+import { BrandLockup } from "@/components/brand/BrandLogo";
 import { PageTransition } from "@/components/motion/PageTransition";
 import {
   accessPublicSend,
@@ -145,15 +146,7 @@ export default function PublicSendPage() {
       <Container maxWidth="md" disableGutters sx={{ position: "relative", zIndex: 1 }}>
         <Stack spacing={{ xs: 2, sm: 2.5 }}>
           <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, px: { xs: 0.5, sm: 1 } }}>
-            <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
-              <Box sx={{ width: 42, height: 42, display: "grid", placeItems: "center", borderRadius: 2.5, color: "primary.main", bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1), border: "1px solid", borderColor: (theme) => alpha(theme.palette.primary.main, 0.18) }}>
-                <ShieldOutlined aria-hidden="true" />
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 750, lineHeight: 1.2 }}>VercelWarden</Typography>
-                <Typography variant="caption" color="text.secondary">安全分享</Typography>
-              </Box>
-            </Stack>
+            <BrandLockup subtitle="安全分享" markSize={42} />
             <Chip icon={<LockOutlined />} label="端到端加密" size="small" color="success" variant="outlined" sx={{ bgcolor: (theme) => alpha(theme.palette.success.main, 0.06), fontWeight: 650 }} />
           </Stack>
 

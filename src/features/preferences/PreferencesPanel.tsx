@@ -143,7 +143,10 @@ export function PreferencesPanel() {
                         border: "3px solid",
                         borderColor: selected ? "text.primary" : "transparent",
                         boxShadow: selected ? (theme) => `0 0 0 2px ${theme.palette.background.paper}` : "none",
-                        transition: "border-color 160ms ease, box-shadow 160ms ease",
+                        transition: (theme) => theme.transitions.create(
+                          ["border-color", "box-shadow"],
+                          { duration: theme.transitions.duration.shorter },
+                        ),
                         "&:focus-visible": { outline: "3px solid", outlineColor: "primary.main", outlineOffset: 3 },
                       }}
                     >

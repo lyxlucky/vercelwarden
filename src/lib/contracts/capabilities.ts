@@ -22,7 +22,7 @@ export const CAPABILITY_KEYS = [
 export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 export type CapabilityMap = Record<CapabilityKey, boolean>;
 
-export interface CapabilityEnvironment {
+export interface CapabilityEnvironment extends NotificationEnvironment {
   [key: string]: string | undefined;
   DISABLE_REGISTRATION?: string;
   REQUIRE_INVITE?: string;
@@ -61,7 +61,7 @@ function boundedInteger(value: string | undefined, fallback: number, minimum: nu
 }
 
 export function buildCapabilityDocument(env: CapabilityEnvironment = process.env) {
-  const notificationsMode = env.NOTIFICATIONS_MODE === "sse" ? "sse" : "poll";
+  const notificationConfiguration = buildNotificationConfiguration(env);
   const capabilities: CapabilityMap = {
     "cipher.extendedTypes": enabled(env.ENABLE_EXTENDED_CIPHERS),
     "cipher.archive": enabled(env.ENABLE_CIPHER_ARCHIVE),
@@ -107,9 +107,23 @@ export function buildCapabilityDocument(env: CapabilityEnvironment = process.env
       ),
     },
     notifications: {
-      mode: notificationsMode,
-      pollFallbackSeconds: 45,
+      mode: notificationConfiguration.effectiveMode,
+      requestedMode: notificationConfiguration.requestedMode,
+      status: notificationConfiguration.websocketReady || notificationConfiguration.requestedMode !== "websocket"
+        ? "ready"
+        : "degraded",
+      transports: {
+        websocket: notificationConfiguration.websocketReady,
+        sse: notificationConfiguration.fallbacks.sse,
+        poll: notificationConfiguration.fallbacks.poll,
+      },
+      pollFallbackSeconds: notificationConfiguration.fallbacks.pollSeconds,
+      websocketMaxDurationSeconds: notificationConfiguration.maxDurationSeconds,
     },
     capabilities,
   } as const;
 }
+import {
+  buildNotificationConfiguration,
+  type NotificationEnvironment,
+} from "@/lib/server/notifications/config";
