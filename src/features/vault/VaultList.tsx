@@ -56,7 +56,7 @@ export function VaultList({ items, selectedId, checkedIds, selectionMode, onSele
                 sx={{
                   minWidth: 0,
                   minHeight: 72,
-                  borderRadius: 0,
+                  borderRadius: 2,
                   px: 1,
                   py: 0.5,
                   borderBottom: 1,

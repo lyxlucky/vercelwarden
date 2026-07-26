@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, Stack, Typography } from "@mui/material";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 
 export function PageHeader({ title, description, actions, eyebrow }: {
   title: string;
@@ -14,7 +15,7 @@ export function PageHeader({ title, description, actions, eyebrow }: {
         <Typography component="h1" variant="h1">{title}</Typography>
         {description ? <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>{description}</Typography> : null}
       </Box>
-      {actions ? <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>{actions}</Stack> : null}
+      {actions ? <ActionGroup compact sx={{ justifyContent: { xs: "flex-start", sm: "flex-end" } }}>{actions}</ActionGroup> : null}
     </Stack>
   );
 }

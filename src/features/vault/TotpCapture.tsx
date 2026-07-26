@@ -60,8 +60,8 @@ export function TotpCapture({ value, onChange }: { value: string; onChange(value
       {mode === "manual" ? (
         <TextField label="TOTP 密钥" value={value} onChange={(event) => onChange(event.target.value)} onBlur={() => { if (value) accept(value); }} />
       ) : (
-        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 0 }}>
-          <Box component="video" ref={videoRef} autoPlay muted playsInline sx={{ width: "100%", maxHeight: 320, display: "block", objectFit: "cover", bgcolor: "common.black", borderRadius: 0 }} />
+        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+          <Box component="video" ref={videoRef} autoPlay muted playsInline sx={{ width: "100%", maxHeight: 320, display: "block", objectFit: "cover", bgcolor: "common.black", borderRadius: 1.5 }} />
           <Button sx={{ mt: 1.5 }} variant="contained" startIcon={<QrCodeScannerOutlined />} onClick={() => void scanFrame()}>识别当前画面</Button>
         </Paper>
       )}

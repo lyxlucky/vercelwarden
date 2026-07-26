@@ -33,6 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <Snackbar
+        key={active?.id ?? "empty-toast"}
         open={Boolean(active)}
         autoHideDuration={5000}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
@@ -45,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             variant="filled"
             severity={active.tone === "danger" ? "error" : active.tone ?? "info"}
             onClose={() => dismiss(active.id)}
-            sx={{ minWidth: { xs: 280, sm: 360 }, maxWidth: 520 }}
+            sx={{ width: { xs: "calc(100vw - 32px)", sm: "auto" }, minWidth: { sm: 360 }, maxWidth: 520 }}
           >
             <AlertTitle>{active.title}</AlertTitle>
             {active.description}

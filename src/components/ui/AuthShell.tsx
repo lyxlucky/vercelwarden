@@ -19,6 +19,7 @@ import {
   type TextFieldProps,
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
+import { PageTransition } from "@/components/motion/PageTransition";
 
 export function AuthShell({ children }: { children: ReactNode }) {
   const { mode, systemMode, setMode } = useColorScheme();
@@ -76,14 +77,14 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <IconButton
             aria-label={dark ? "切换为浅色外观" : "切换为深色外观"}
             onClick={() => setMode(dark ? "light" : "dark")}
-            sx={{
+            sx={(theme) => ({
               border: 1,
               borderColor: "divider",
               bgcolor: "background.paper",
               cursor: "pointer",
-              transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
+              transition: theme.transitions.create(["background-color", "border-color", "color"], { duration: theme.transitions.duration.shorter }),
               "&:hover": { borderColor: "primary.main", color: "primary.main", bgcolor: "primary.light" },
-            }}
+            })}
           >
             {dark ? <LightModeOutlined /> : <DarkModeOutlined />}
           </IconButton>
@@ -144,33 +145,29 @@ export function AuthPanel({
 }) {
   const titleId = useId();
   return (
-    <Paper
-      component="section"
-      aria-labelledby={titleId}
-      elevation={0}
-      sx={(theme) => ({
-        width: "100%",
-        maxWidth: wide ? 720 : 520,
-        mx: "auto",
-        overflow: "hidden",
-        border: 1,
-        borderColor: "divider",
-        borderTop: "4px solid",
-        borderTopColor: "primary.main",
-        borderRadius: { xs: 2.5, sm: 3 },
-        bgcolor: "background.paper",
-        boxShadow: "0 18px 50px rgba(30, 64, 175, 0.09)",
-        animation: "auth-panel-enter 260ms ease-out both",
-        "@keyframes auth-panel-enter": {
-          from: { opacity: 0, transform: "translateY(8px)" },
-          to: { opacity: 1, transform: "translateY(0)" },
-        },
-        ...theme.applyStyles("dark", {
-          boxShadow: "0 20px 54px rgba(0, 0, 0, 0.28)",
-        }),
-      })}
-    >
-      <Stack spacing={3} sx={{ p: { xs: 2.5, sm: 4 } }}>
+    <PageTransition sx={{ width: "100%" }}>
+      <Paper
+        component="section"
+        aria-labelledby={titleId}
+        elevation={0}
+        sx={(theme) => ({
+          width: "100%",
+          maxWidth: wide ? 720 : 520,
+          mx: "auto",
+          overflow: "hidden",
+          border: 1,
+          borderColor: "divider",
+          borderTop: "4px solid",
+          borderTopColor: "primary.main",
+          borderRadius: { xs: 2.5, sm: 3 },
+          bgcolor: "background.paper",
+          boxShadow: "0 18px 50px rgba(30, 64, 175, 0.09)",
+          ...theme.applyStyles("dark", {
+            boxShadow: "0 20px 54px rgba(0, 0, 0, 0.28)",
+          }),
+        })}
+      >
+        <Stack spacing={3} sx={{ p: { xs: 2.5, sm: 4 } }}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
           {icon ? (
             <Box sx={{ width: 44, height: 44, display: "grid", placeItems: "center", flex: "0 0 auto", borderRadius: 2, bgcolor: "primary.light", color: "primary.dark" }}>
@@ -187,8 +184,9 @@ export function AuthPanel({
         </Stack>
         {children}
         {footer ? <Box sx={{ pt: 0.5 }}>{footer}</Box> : null}
-      </Stack>
-    </Paper>
+        </Stack>
+      </Paper>
+    </PageTransition>
   );
 }
 

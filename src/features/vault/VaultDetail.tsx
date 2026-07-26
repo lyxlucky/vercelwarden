@@ -66,7 +66,7 @@ function FieldRow({ label, value, actions, mono = false }: { label: string; valu
         gap: 1.5,
         px: 2,
         py: 1,
-        borderRadius: 0,
+        borderRadius: 2,
         borderLeft: 3,
         borderColor: "divider",
         bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.055 : 0.035),

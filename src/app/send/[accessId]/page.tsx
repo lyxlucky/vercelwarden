@@ -30,6 +30,7 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useParams } from "next/navigation";
+import { PageTransition } from "@/components/motion/PageTransition";
 import {
   accessPublicSend,
   downloadPublicSendFile,
@@ -156,17 +157,15 @@ export default function PublicSendPage() {
             <Chip icon={<LockOutlined />} label="端到端加密" size="small" color="success" variant="outlined" sx={{ bgcolor: (theme) => alpha(theme.palette.success.main, 0.06), fontWeight: 650 }} />
           </Stack>
 
-          <Card
-            variant="outlined"
-            sx={{
-              overflow: "hidden",
-              borderColor: "divider",
-              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.12)",
-              animation: "vw-public-enter 240ms cubic-bezier(0, 0, 0.2, 1)",
-              "@keyframes vw-public-enter": { from: { opacity: 0, transform: "translateY(8px)" }, to: { opacity: 1, transform: "translateY(0)" } },
-              "@media (prefers-reduced-motion: reduce)": { animation: "none" },
-            }}
-          >
+          <PageTransition>
+            <Card
+              variant="outlined"
+              sx={{
+                overflow: "hidden",
+                borderColor: "divider",
+                boxShadow: "0 24px 80px rgba(15, 23, 42, 0.12)",
+              }}
+            >
             {busy && (result?.type === "file" || progress) ? <LinearProgress aria-label={progress ? `${progressLabels[progress.phase]} ${progress.percent}%` : "正在处理分享"} variant={progress ? "determinate" : "indeterminate"} value={progress?.percent} /> : null}
             <CardContent sx={{ p: { xs: 2.5, sm: 4.5 } }}>
               {!result && busy && !passwordRequired ? (
@@ -297,7 +296,8 @@ export default function PublicSendPage() {
                 </Stack>
               ) : null}
             </CardContent>
-          </Card>
+            </Card>
+          </PageTransition>
         </Stack>
       </Container>
       <Snackbar open={copyFeedback !== null} autoHideDuration={2_400} onClose={() => setCopyFeedback(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>

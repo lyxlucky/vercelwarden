@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import ArrowBackOutlined from "@mui/icons-material/ArrowBackOutlined";
-import { AppBar, Box, Drawer, IconButton, Toolbar, Tooltip } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { AppBar, Box, Drawer, IconButton, Toolbar, Tooltip, useMediaQuery } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import { motionTimeout, useReducedMotion } from "@/components/motion/useReducedMotion";
 
 export type MobilePane = "navigation" | "list" | "detail";
 
@@ -25,6 +26,20 @@ export function AppShell({
   mobilePane?: MobilePane;
   onMobileBack?: () => void;
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"), { noSsr: true });
+  const reducedMotion = useReducedMotion();
+  const listRef = useRef<HTMLElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const previousPane = useRef(mobilePane);
+
+  useEffect(() => {
+    if (!isMobile || previousPane.current === mobilePane) return;
+    previousPane.current = mobilePane;
+    const target = mobilePane === "list" ? listRef.current : mobilePane === "detail" ? detailRef.current : null;
+    if (target) window.requestAnimationFrame(() => target.focus({ preventScroll: true }));
+  }, [isMobile, mobilePane]);
+
   const backButton = (label: string) => onMobileBack ? (
     <Tooltip title={label}>
       <IconButton aria-label={label} onClick={onMobileBack}><ArrowBackOutlined /></IconButton>
@@ -54,7 +69,16 @@ export function AppShell({
         component="aside"
         aria-label="密码库导航"
         data-active={mobilePane === "navigation"}
-        sx={{ gridArea: "navigation", display: { xs: "none", md: "block" }, minWidth: 0, overflow: "auto", borderRight: 1, borderColor: "divider", bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.06 : 0.025) }}
+        sx={{
+          gridArea: "navigation",
+          display: { xs: "none", md: "block" },
+          minWidth: 0,
+          overflow: "auto",
+          borderRight: 1,
+          borderColor: "divider",
+          bgcolor: (muiTheme) => alpha(muiTheme.palette.primary.main, muiTheme.palette.mode === "dark" ? 0.065 : 0.035),
+          transition: (muiTheme) => muiTheme.transitions.create(["background-color", "border-color"], { duration: muiTheme.transitions.duration.short }),
+        }}
       >
         {navigation}
       </Box>
@@ -64,46 +88,93 @@ export function AppShell({
         open={mobilePane === "navigation"}
         onClose={onMobileBack}
         ModalProps={{ keepMounted: true }}
-        slotProps={{ paper: { sx: { width: "min(88vw, 336px)", borderRadius: 0, bgcolor: "background.default" } } }}
+        transitionDuration={motionTimeout(reducedMotion, { enter: theme.transitions.duration.enteringScreen, exit: theme.transitions.duration.leavingScreen })}
+        slotProps={{
+          paper: {
+            sx: (muiTheme) => ({
+              width: "min(88vw, 336px)",
+              borderTopRightRadius: typeof muiTheme.shape.borderRadius === "number" ? muiTheme.shape.borderRadius * 4 : muiTheme.shape.borderRadius,
+              borderBottomRightRadius: typeof muiTheme.shape.borderRadius === "number" ? muiTheme.shape.borderRadius * 4 : muiTheme.shape.borderRadius,
+              borderRight: 1,
+              borderColor: "divider",
+              bgcolor: "background.default",
+              boxShadow: muiTheme.shadows[16],
+              overflow: "hidden",
+            }),
+          },
+        }}
         sx={{ display: { xs: "block", md: "none" } }}
       >
         {navigation}
       </Drawer>
 
       <Box
-        component="section"
-        aria-label="项目列表"
-        data-active={mobilePane === "list"}
         sx={{
-          gridArea: { xs: "content", md: "list" },
-          display: { xs: mobilePane === "list" ? "flex" : "none", md: "flex" },
-          flexDirection: "column",
+          gridArea: { xs: "content" },
+          display: { xs: "block", md: "contents" },
+          position: { xs: "relative", md: "static" },
           minWidth: 0,
           minHeight: 0,
-          overflow: "hidden",
-          borderRight: { md: 1 },
-          borderColor: "divider",
-          bgcolor: "background.paper",
+          overflow: { xs: "hidden", md: "visible" },
         }}
       >
-        {list}
-      </Box>
+        <Box
+          ref={listRef}
+          component="section"
+          aria-label="项目列表"
+          aria-hidden={isMobile && mobilePane !== "list" ? true : undefined}
+          inert={isMobile && mobilePane !== "list" ? true : undefined}
+          tabIndex={isMobile ? -1 : undefined}
+          data-active={mobilePane === "list"}
+          data-mobile-pane-panel="list"
+          sx={{
+            gridArea: { md: "list" },
+            position: { xs: "absolute", md: "static" },
+            inset: { xs: 0, md: "auto" },
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
+            borderRight: { md: 1 },
+            borderColor: "divider",
+            bgcolor: "background.paper",
+            opacity: { xs: mobilePane === "list" ? 1 : 0, md: 1 },
+            transform: { xs: mobilePane === "list" ? "translateX(0)" : "translateX(-16px)", md: "none" },
+            pointerEvents: { xs: mobilePane === "list" ? "auto" : "none", md: "auto" },
+            transition: reducedMotion ? "none" : (muiTheme) => muiTheme.transitions.create(["opacity", "transform"], { duration: muiTheme.transitions.duration.short, easing: muiTheme.transitions.easing.easeOut }),
+          }}
+        >
+          {list}
+        </Box>
 
-      <Box
-        component="main"
-        data-active={mobilePane === "detail"}
-        sx={{
-          gridArea: { xs: "content", md: "detail" },
-          display: { xs: mobilePane === "detail" ? "flex" : "none", md: "flex" },
-          flexDirection: "column",
-          minWidth: 0,
-          minHeight: 0,
-          overflow: "auto",
-          bgcolor: "background.default",
-        }}
-      >
-        {mobilePane === "detail" && onMobileBack ? <Box sx={{ display: { xs: "block", md: "none" }, p: 0.5 }}>{backButton("返回列表")}</Box> : null}
-        {detail}
+        <Box
+          ref={detailRef}
+          component="main"
+          aria-hidden={isMobile && mobilePane !== "detail" ? true : undefined}
+          inert={isMobile && mobilePane !== "detail" ? true : undefined}
+          tabIndex={isMobile ? -1 : undefined}
+          data-active={mobilePane === "detail"}
+          data-mobile-pane-panel="detail"
+          sx={{
+            gridArea: { md: "detail" },
+            position: { xs: "absolute", md: "static" },
+            inset: { xs: 0, md: "auto" },
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "auto",
+            bgcolor: "background.default",
+            opacity: { xs: mobilePane === "detail" ? 1 : 0, md: 1 },
+            transform: { xs: mobilePane === "detail" ? "translateX(0)" : "translateX(16px)", md: "none" },
+            pointerEvents: { xs: mobilePane === "detail" ? "auto" : "none", md: "auto" },
+            transition: reducedMotion ? "none" : (muiTheme) => muiTheme.transitions.create(["opacity", "transform"], { duration: muiTheme.transitions.duration.short, easing: muiTheme.transitions.easing.easeOut }),
+          }}
+        >
+          {mobilePane === "detail" && onMobileBack ? <Box sx={{ display: { xs: "block", md: "none" }, p: 0.5 }}>{backButton("返回列表")}</Box> : null}
+          {detail}
+        </Box>
       </Box>
     </Box>
   );

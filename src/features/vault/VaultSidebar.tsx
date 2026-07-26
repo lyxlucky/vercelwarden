@@ -69,16 +69,31 @@ function isActive(current: VaultFilter, candidate: VaultFilter) {
 const itemSx = {
   minHeight: 48,
   mx: 1.5,
-  my: 0.25,
+  my: 0.5,
   px: 1.5,
-  borderRadius: 0,
-  borderLeft: "3px solid transparent",
+  position: "relative",
+  borderRadius: 2,
+  overflow: "hidden",
+  "&::before": {
+    content: '""',
+    position: "absolute",
+    insetInlineStart: 4,
+    top: 10,
+    bottom: 10,
+    width: 3,
+    borderRadius: 999,
+    bgcolor: "primary.main",
+    opacity: 0,
+    transform: "scaleY(0.45)",
+    transition: "opacity 160ms ease, transform 160ms ease",
+  },
+  "&:active": { transform: "translateY(1px)" },
   "&.Mui-selected": {
     bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12),
     color: "primary.main",
-    borderLeftColor: "primary.main",
     "&:hover": { bgcolor: (theme: import("@mui/material/styles").Theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.27 : 0.16) },
     "& .MuiListItemIcon-root": { color: "primary.main" },
+    "&::before": { opacity: 1, transform: "scaleY(1)" },
   },
 } as const;
 
@@ -138,7 +153,7 @@ export function VaultSidebar({ filter, counts, folders, onFilterChange, onManage
   ];
 
   return (
-    <Box component="nav" aria-label="密码库视图" sx={{ height: "100%", overflow: "auto", pb: 3 }}>
+    <Box component="nav" aria-label="密码库视图" sx={{ height: "100%", overflow: "auto", py: 1, pb: 3 }}>
       <Box sx={{ px: 3, pt: 3, pb: 1.5 }}>
         <Typography component="p" variant="subtitle1" sx={{ fontWeight: 750 }}>工作区</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>浏览、整理和保护你的项目</Typography>

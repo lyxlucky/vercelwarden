@@ -16,6 +16,7 @@ import {
   TaskAltOutlined,
   WarningAmberOutlined,
 } from "@mui/icons-material";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 
 export type AsyncStateKind =
   | "loading"
@@ -77,7 +78,7 @@ export function AsyncState({
       data-kind={kind}
       sx={{ py: compact ? 0.5 : 1.25, width: "100%" }}
       action={actionLabel && onAction ? (
-        <Button color="inherit" size="small" onClick={onAction}>{actionLabel}</Button>
+        <ActionGroup compact><Button color="inherit" size="small" onClick={onAction}>{actionLabel}</Button></ActionGroup>
       ) : undefined}
     >
       <AlertTitle>{title ?? state.title}</AlertTitle>

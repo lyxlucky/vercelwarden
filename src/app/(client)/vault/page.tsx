@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   AddOutlined,
   AdminPanelSettingsOutlined,
@@ -25,6 +25,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   FormControl,
   IconButton,
   InputAdornment,
@@ -44,6 +45,7 @@ import { AppShell, type MobilePane } from "@/components/shell/AppShell";
 import { RouteGuard } from "@/components/shell/RouteGuard";
 import { AppLink } from "@/components/theme/AppLink";
 import { TaskState } from "@/components/feedback/TaskState";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 import { useToast } from "@/components/ui/ToastProvider";
 import { lockController } from "@/features/auth/lock-controller";
 import {
@@ -97,13 +99,13 @@ function filterTitle(filter: VaultFilter, folderName?: string) {
   return "所有项目";
 }
 
-function TopBarAction({ label, icon, action, href, mobileHidden = false }: { label: string; icon: ReactNode; action?: () => void; href?: string; mobileHidden?: boolean }) {
+function TopBarAction({ label, icon, action, href, mobileHidden = false, disabled = false }: { label: string; icon: ReactNode; action?: () => void; href?: string; mobileHidden?: boolean; disabled?: boolean }) {
   return (
     <Tooltip title={label}>
       {href ? (
         <IconButton component={AppLink} href={href} aria-label={label} sx={{ display: mobileHidden ? { xs: "none", sm: "inline-flex" } : undefined }}>{icon}</IconButton>
       ) : (
-        <IconButton aria-label={label} onClick={action} sx={{ display: mobileHidden ? { xs: "none", sm: "inline-flex" } : undefined }}>{icon}</IconButton>
+        <IconButton aria-label={label} onClick={action} disabled={disabled} sx={{ display: mobileHidden ? { xs: "none", sm: "inline-flex" } : undefined }}>{icon}</IconButton>
       )}
     </Tooltip>
   );
@@ -126,18 +128,35 @@ export default function VaultPage() {
   const [conflictDialog, setConflictDialog] = useState(false);
   const [editorTarget, setEditorTarget] = useState<"new" | VaultItemView | null>(null);
   const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
+  const [selectionMoreAnchor, setSelectionMoreAnchor] = useState<HTMLElement | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const mutationInFlight = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback((announce = false) => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    setRefreshing(true);
     vaultStore.setLoading();
-    try {
-      const snapshot = await fetchVaultSnapshot();
-      vaultStore.replace(snapshot.items, snapshot.folders);
-    } catch (error) {
-      vaultStore.setError(error instanceof Error ? error.message : "密码库加载失败。");
-    }
-  }, []);
+    const operation = (async () => {
+      try {
+        const snapshot = await fetchVaultSnapshot();
+        vaultStore.replace(snapshot.items, snapshot.folders);
+        if (announce) toast.push({ title: "密码库已刷新", tone: "success" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "密码库加载失败。";
+        vaultStore.setError(message);
+        if (announce) toast.push({ title: "刷新失败", description: message, tone: "danger" });
+      } finally {
+        setRefreshing(false);
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = operation;
+    return operation;
+  }, [toast]);
 
-  useEffect(() => { if (session.phase === "unlocked" && vault.status === "idle") void refresh(); }, [refresh, session.phase, vault.status]);
+  useEffect(() => { if (session.phase === "unlocked" && vault.status === "idle") void refresh(false); }, [refresh, session.phase, vault.status]);
   useEffect(() => { window.localStorage.setItem(VAULT_SORT_STORAGE_KEY, sort); }, [sort]);
   useEffect(() => {
     if (!selectionMode) return;
@@ -159,7 +178,7 @@ export default function VaultPage() {
     window.history.replaceState(null, "", url);
   };
   const selectItem = (item: VaultItemView) => { setSelectedId(item.id); setMobilePane("detail"); updateItemUrl(item.id); };
-  const exitSelectionMode = () => { setSelectionMode(false); setCheckedIds(new Set()); };
+  const exitSelectionMode = () => { setSelectionMode(false); setCheckedIds(new Set()); setSelectionMoreAnchor(null); };
   const changeFilter = (next: VaultFilter) => { setFilter(next); exitSelectionMode(); setSelectedId(null); setMobilePane("list"); updateItemUrl(null); };
   const handleBulkResult = (result: BulkMutationResult) => {
     const conflicts = result.outcomes.filter((outcome) => outcome.status === "conflict");
@@ -170,7 +189,9 @@ export default function VaultPage() {
     if (selectionMode && remaining.size === 0) setSelectionMode(false);
   };
   const runItems = async (items: readonly VaultItemView[], operation: (items: readonly VaultItemView[]) => Promise<BulkMutationResult>) => {
-    if (items.length === 0) return null;
+    if (items.length === 0 || mutationInFlight.current) return null;
+    mutationInFlight.current = true;
+    setMutationBusy(true);
     try {
       const result = await operation(items);
       handleBulkResult(result);
@@ -178,17 +199,24 @@ export default function VaultPage() {
     } catch (error) {
       toast.push({ title: "操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" });
       return null;
+    } finally {
+      mutationInFlight.current = false;
+      setMutationBusy(false);
     }
   };
   const folderMutation = async (operation: () => Promise<unknown>, success: string) => {
-    try { await operation(); toast.push({ title: success, tone: "success" }); await refresh(); }
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setMutationBusy(true);
+    try { await operation(); toast.push({ title: success, tone: "success" }); await refresh(false); }
     catch (error) { toast.push({ title: "文件夹操作失败", description: error instanceof Error ? error.message : "请重试。", tone: "danger" }); throw error; }
+    finally { mutationInFlight.current = false; setMutationBusy(false); }
   };
 
   const listPanel = vault.status === "loading" || vault.status === "idle"
     ? <TaskState kind="loading" compact />
     : vault.status === "error"
-      ? <TaskState kind="fatal" title="无法加载密码库" description={vault.error ?? undefined} actionLabel="重试" onAction={() => void refresh()} />
+      ? <TaskState kind="fatal" title="无法加载密码库" description={vault.error ?? undefined} actionLabel="重试" onAction={() => void refresh(true)} />
       : <VaultList items={visibleItems} selectedId={selectedId} checkedIds={checkedIds} selectionMode={selectionMode} onSelect={selectItem} onToggle={(id) => setCheckedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} />;
 
   const requestConfirm = (mode: Exclude<ConfirmMode, null>, items: readonly VaultItemView[]) => setPendingConfirm({ mode, items: [...items] });
@@ -207,6 +235,8 @@ export default function VaultPage() {
   const openMore = (event: MouseEvent<HTMLElement>) => setMoreAnchor(event.currentTarget);
   const closeMore = () => setMoreAnchor(null);
   const moreAction = (action: () => void) => { closeMore(); action(); };
+  const closeSelectionMore = () => setSelectionMoreAnchor(null);
+  const selectionMoreAction = (action: () => void) => { closeSelectionMore(); action(); };
 
   return (
     <RouteGuard>
@@ -217,28 +247,28 @@ export default function VaultPage() {
           <Stack direction="row" sx={{ width: "100%", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
             <Stack direction="row" sx={{ alignItems: "center", minWidth: 0, gap: 1.25 }}>
               <Tooltip title="打开密码库视图"><IconButton aria-label="打开密码库视图" onClick={() => setMobilePane("navigation")} sx={{ display: { md: "none" } }}><MenuOutlined /></IconButton></Tooltip>
-              <Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: "3px", bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12), color: "primary.main", border: 1, borderColor: (theme) => alpha(theme.palette.primary.main, 0.32) }}><SecurityOutlined /></Box>
+              <Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 2, bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.12), color: "primary.main", border: 1, borderColor: (theme) => alpha(theme.palette.primary.main, 0.32) }}><SecurityOutlined /></Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 800, lineHeight: 1.1, letterSpacing: -0.2 }}>VercelWarden</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>个人密码库</Typography>
               </Box>
             </Stack>
-            <Stack direction="row" sx={{ alignItems: "center", gap: 0.25 }}>
+            <ActionGroup compact sx={{ flex: "0 0 auto", flexWrap: "nowrap" }}>
               {session.readOnly ? <Chip size="small" color="warning" variant="outlined" label="只读" sx={{ mr: 0.5 }} /> : null}
               <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 220, display: { xs: "none", lg: "block" }, mr: 1 }}>{session.user?.email}</Typography>
               {session.user?.roles.includes("admin") ? <TopBarAction label="管理控制台" icon={<AdminPanelSettingsOutlined />} href="/admin" mobileHidden /> : null}
               <TopBarAction label="设置" icon={<SettingsOutlined />} href="/settings" mobileHidden />
-              <TopBarAction label="刷新密码库" icon={<RefreshOutlined />} action={() => void refresh()} mobileHidden />
+              <TopBarAction label={refreshing ? "正在刷新密码库" : "刷新密码库"} icon={refreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshOutlined />} action={() => void refresh(true)} mobileHidden disabled={refreshing} />
               <TopBarAction label="锁定" icon={<LockOutlined />} action={() => lockController.lock()} />
               <Tooltip title="更多"><IconButton aria-label="更多操作" onClick={openMore} sx={{ display: { sm: "none" } }}><MoreVertOutlined /></IconButton></Tooltip>
               <TopBarAction label="退出" icon={<LogoutOutlined />} action={() => void lockController.logout()} mobileHidden />
               <Menu anchorEl={moreAnchor} open={Boolean(moreAnchor)} onClose={closeMore}>
                 {session.user?.roles.includes("admin") ? <MenuItem component={AppLink} href="/admin" onClick={closeMore}><ListItemIcon><AdminPanelSettingsOutlined fontSize="small" /></ListItemIcon><ListItemText>管理控制台</ListItemText></MenuItem> : null}
                 <MenuItem component={AppLink} href="/settings" onClick={closeMore}><ListItemIcon><SettingsOutlined fontSize="small" /></ListItemIcon><ListItemText>设置</ListItemText></MenuItem>
-                <MenuItem onClick={() => moreAction(() => void refresh())}><ListItemIcon><RefreshOutlined fontSize="small" /></ListItemIcon><ListItemText>刷新密码库</ListItemText></MenuItem>
+                <MenuItem disabled={refreshing} onClick={() => moreAction(() => void refresh(true))}><ListItemIcon>{refreshing ? <CircularProgress size={18} /> : <RefreshOutlined fontSize="small" />}</ListItemIcon><ListItemText>{refreshing ? "正在刷新" : "刷新密码库"}</ListItemText></MenuItem>
                 <MenuItem onClick={() => moreAction(() => void lockController.logout())}><ListItemIcon><LogoutOutlined fontSize="small" /></ListItemIcon><ListItemText>退出</ListItemText></MenuItem>
               </Menu>
-            </Stack>
+            </ActionGroup>
           </Stack>
         )}
         navigation={<VaultSidebar filter={filter} counts={counts} folders={vault.folders} onFilterChange={changeFilter} onManageFolders={() => setFolderDialog(true)} />}
@@ -247,6 +277,7 @@ export default function VaultPage() {
             <Box
               component="header"
               aria-label={selectionMode ? "批量操作" : undefined}
+              aria-busy={selectionMode && mutationBusy ? true : undefined}
               sx={{
                 minHeight: 92,
                 px: 2,
@@ -264,19 +295,29 @@ export default function VaultPage() {
                     <Tooltip title="退出选择模式"><IconButton aria-label="退出选择模式" onClick={exitSelectionMode}><CloseOutlined /></IconButton></Tooltip>
                     <Box sx={{ minWidth: 0 }}>
                       <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 800 }}>{checkedItems.length > 0 ? `已选择 ${checkedItems.length} 项` : "选择项目"}</Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>{checkedItems.length > 0 ? "可直接执行批量操作" : "点击列表项进行多选，Esc 退出"}</Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>{mutationBusy ? "正在处理所选项目…" : checkedItems.length > 0 ? "可直接执行批量操作" : "点击列表项进行多选，Esc 退出"}</Typography>
                     </Box>
                   </Stack>
-                  <Stack direction="row" sx={{ alignItems: "center", gap: 0.25, flex: "0 0 auto" }}>
-                    <Tooltip title={allVisibleSelected ? "取消全选" : "全选"}><span><IconButton aria-label={allVisibleSelected ? "取消全选" : "全选"} disabled={visibleItems.length === 0} onClick={() => setCheckedIds(allVisibleSelected ? new Set() : new Set(visibleItems.map((item) => item.id)))}><SelectAllOutlined /></IconButton></span></Tooltip>
-                    <Tooltip title="收藏"><span><IconButton aria-label="收藏所选项目" disabled={checkedItems.length === 0} onClick={() => void runItems(checkedItems, (items) => favoriteCiphers(items, true))}><FavoriteBorderOutlined /></IconButton></span></Tooltip>
-                    <Tooltip title="移动"><span><IconButton aria-label="移动所选项目" disabled={checkedItems.length === 0} onClick={() => setMoveTargets([...checkedItems])}><FolderOpenOutlined /></IconButton></span></Tooltip>
-                    {filter.kind === "archive" ? <Tooltip title="取消归档"><span><IconButton aria-label="取消归档所选项目" disabled={checkedItems.length === 0} onClick={() => requestConfirm("unarchive", checkedItems)}><RestoreOutlined /></IconButton></span></Tooltip> : filter.kind !== "trash" ? <Tooltip title="归档"><span><IconButton aria-label="归档所选项目" disabled={checkedItems.length === 0} onClick={() => requestConfirm("archive", checkedItems)}><ArchiveOutlined /></IconButton></span></Tooltip> : null}
-                    {filter.kind === "trash" ? <><Tooltip title="恢复"><span><IconButton aria-label="恢复所选项目" disabled={checkedItems.length === 0} onClick={() => requestConfirm("restore", checkedItems)}><RestoreOutlined /></IconButton></span></Tooltip><Tooltip title="永久删除"><span><IconButton aria-label="永久删除所选项目" color="error" disabled={checkedItems.length === 0} onClick={() => requestConfirm("permanent", checkedItems)}><DeleteOutlineOutlined /></IconButton></span></Tooltip></> : <Tooltip title="移入回收站"><span><IconButton aria-label="将所选项目移入回收站" color="error" disabled={checkedItems.length === 0} onClick={() => requestConfirm("trash", checkedItems)}><DeleteOutlineOutlined /></IconButton></span></Tooltip>}
-                  </Stack>
+                  <ActionGroup compact sx={{ display: { xs: "none", sm: "flex" }, flex: "0 0 auto", flexWrap: "nowrap" }}>
+                    <Tooltip title={allVisibleSelected ? "取消全选" : "全选"}><span><IconButton aria-label={allVisibleSelected ? "取消全选" : "全选"} disabled={visibleItems.length === 0 || mutationBusy} onClick={() => setCheckedIds(allVisibleSelected ? new Set() : new Set(visibleItems.map((item) => item.id)))}><SelectAllOutlined /></IconButton></span></Tooltip>
+                    <Tooltip title="收藏"><span><IconButton aria-label="收藏所选项目" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => void runItems(checkedItems, (items) => favoriteCiphers(items, true))}><FavoriteBorderOutlined /></IconButton></span></Tooltip>
+                    <Tooltip title="移动"><span><IconButton aria-label="移动所选项目" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => setMoveTargets([...checkedItems])}><FolderOpenOutlined /></IconButton></span></Tooltip>
+                    {filter.kind === "archive" ? <Tooltip title="取消归档"><span><IconButton aria-label="取消归档所选项目" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => requestConfirm("unarchive", checkedItems)}><RestoreOutlined /></IconButton></span></Tooltip> : filter.kind !== "trash" ? <Tooltip title="归档"><span><IconButton aria-label="归档所选项目" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => requestConfirm("archive", checkedItems)}><ArchiveOutlined /></IconButton></span></Tooltip> : null}
+                    {filter.kind === "trash" ? <><Tooltip title="恢复"><span><IconButton aria-label="恢复所选项目" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => requestConfirm("restore", checkedItems)}><RestoreOutlined /></IconButton></span></Tooltip><Tooltip title="永久删除"><span><IconButton aria-label="永久删除所选项目" color="error" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => requestConfirm("permanent", checkedItems)}><DeleteOutlineOutlined /></IconButton></span></Tooltip></> : <Tooltip title="移入回收站"><span><IconButton aria-label="将所选项目移入回收站" color="error" disabled={checkedItems.length === 0 || mutationBusy} onClick={() => requestConfirm("trash", checkedItems)}><DeleteOutlineOutlined /></IconButton></span></Tooltip>}
+                  </ActionGroup>
+                  <ActionGroup compact sx={{ display: { xs: "flex", sm: "none" }, flex: "0 0 auto", flexWrap: "nowrap" }}>
+                    <Tooltip title={allVisibleSelected ? "取消全选" : "全选"}><span><IconButton aria-label={allVisibleSelected ? "取消全选" : "全选"} disabled={visibleItems.length === 0 || mutationBusy} onClick={() => setCheckedIds(allVisibleSelected ? new Set() : new Set(visibleItems.map((item) => item.id)))}><SelectAllOutlined /></IconButton></span></Tooltip>
+                    <Tooltip title="更多批量操作"><span><IconButton aria-label="更多批量操作" disabled={mutationBusy} onClick={(event) => setSelectionMoreAnchor(event.currentTarget)}><MoreVertOutlined /></IconButton></span></Tooltip>
+                  </ActionGroup>
+                  <Menu anchorEl={selectionMoreAnchor} open={Boolean(selectionMoreAnchor)} onClose={closeSelectionMore}>
+                    <MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => void runItems(checkedItems, (items) => favoriteCiphers(items, true)))}><ListItemIcon><FavoriteBorderOutlined fontSize="small" /></ListItemIcon><ListItemText>收藏所选项目</ListItemText></MenuItem>
+                    <MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => setMoveTargets([...checkedItems]))}><ListItemIcon><FolderOpenOutlined fontSize="small" /></ListItemIcon><ListItemText>移动所选项目</ListItemText></MenuItem>
+                    {filter.kind === "archive" ? <MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => requestConfirm("unarchive", checkedItems))}><ListItemIcon><RestoreOutlined fontSize="small" /></ListItemIcon><ListItemText>取消归档</ListItemText></MenuItem> : filter.kind !== "trash" ? <MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => requestConfirm("archive", checkedItems))}><ListItemIcon><ArchiveOutlined fontSize="small" /></ListItemIcon><ListItemText>归档所选项目</ListItemText></MenuItem> : null}
+                    {filter.kind === "trash" ? <><MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => requestConfirm("restore", checkedItems))}><ListItemIcon><RestoreOutlined fontSize="small" /></ListItemIcon><ListItemText>恢复所选项目</ListItemText></MenuItem><MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => requestConfirm("permanent", checkedItems))} sx={{ color: "error.main" }}><ListItemIcon sx={{ color: "inherit" }}><DeleteOutlineOutlined fontSize="small" /></ListItemIcon><ListItemText>永久删除</ListItemText></MenuItem></> : <MenuItem disabled={checkedItems.length === 0 || mutationBusy} onClick={() => selectionMoreAction(() => requestConfirm("trash", checkedItems))} sx={{ color: "error.main" }}><ListItemIcon sx={{ color: "inherit" }}><DeleteOutlineOutlined fontSize="small" /></ListItemIcon><ListItemText>移入回收站</ListItemText></MenuItem>}
+                  </Menu>
                 </Stack>
               ) : (
-                <Stack direction="row" sx={{ width: "100%", alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} sx={{ width: "100%", alignItems: { xs: "stretch", sm: "center" }, justifyContent: "space-between", gap: 1.5 }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 750 }}>当前视图</Typography>
                     <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -284,17 +325,17 @@ export default function VaultPage() {
                       <Typography variant="caption" color="text.secondary">{visibleItems.length} 项</Typography>
                     </Stack>
                   </Box>
-                  <Stack direction="row" sx={{ gap: 1, flex: "0 0 auto" }}>
+                  <ActionGroup compact sx={{ width: { xs: "100%", sm: "auto" }, flex: "0 0 auto", "& > .MuiButton-root": { flex: { xs: 1, sm: "0 0 auto" } } }}>
                     <Button startIcon={<ChecklistOutlined />} variant="outlined" disabled={visibleItems.length === 0} onClick={() => setSelectionMode(true)}>选择</Button>
                     <Button startIcon={<AddOutlined />} variant="contained" onClick={() => setEditorTarget("new")}>新建</Button>
-                  </Stack>
+                  </ActionGroup>
                 </Stack>
               )}
             </Box>
 
-            <Stack direction="row" sx={{ px: 2, py: 1.5, gap: 1, alignItems: "flex-start", borderBottom: 1, borderColor: "divider" }}>
+            <Stack direction={{ xs: "column", sm: "row" }} sx={{ px: 2, py: 1.5, gap: 1, alignItems: "flex-start", borderBottom: 1, borderColor: "divider" }}>
               <TextField size="small" label="搜索密码库" placeholder="名称、账号、网站或字段" value={query} onChange={(event) => { setQuery(event.target.value); if (selectionMode) exitSelectionMode(); }} slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchOutlined /></InputAdornment> } }} />
-              <FormControl size="small" sx={{ width: 138, flex: "0 0 138px" }}><InputLabel id="vault-sort-label">项目排序</InputLabel><Select labelId="vault-sort-label" label="项目排序" value={sort} onChange={(event) => setSort(event.target.value as VaultSort)}><MenuItem value="name">名称</MenuItem><MenuItem value="created-desc">最新创建</MenuItem><MenuItem value="updated-desc">最近修改</MenuItem></Select></FormControl>
+              <FormControl size="small" sx={{ width: { xs: "100%", sm: 138 }, flex: { xs: "1 1 auto", sm: "0 0 138px" } }}><InputLabel id="vault-sort-label">项目排序</InputLabel><Select labelId="vault-sort-label" label="项目排序" value={sort} onChange={(event) => setSort(event.target.value as VaultSort)}><MenuItem value="name">名称</MenuItem><MenuItem value="created-desc">最新创建</MenuItem><MenuItem value="updated-desc">最近修改</MenuItem></Select></FormControl>
             </Stack>
 
             {filter.kind === "duplicates" ? <Box sx={{ px: 2, pb: 2 }}><FormControl size="small"><InputLabel id="duplicate-mode-label">匹配方式</InputLabel><Select labelId="duplicate-mode-label" label="匹配方式" value={filter.mode} onChange={(event) => setFilter({ ...filter, mode: event.target.value as DuplicateDetectionMode })}><MenuItem value="exact">完全相同</MenuItem><MenuItem value="login-site">站点 + 凭据</MenuItem><MenuItem value="login-credentials">登录凭据</MenuItem><MenuItem value="password">重复密码</MenuItem></Select></FormControl></Box> : null}

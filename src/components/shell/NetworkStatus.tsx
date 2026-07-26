@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { CloudDoneOutlined, CloudOffOutlined, DeleteOutlined, SyncOutlined } from "@mui/icons-material";
-import { Alert, Button, Stack } from "@mui/material";
+import { Alert, Button } from "@mui/material";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 import { authSecretStore } from "@/features/auth/secret-store";
 import { vaultStore } from "@/features/vault/store";
 import { clearVercelwardenLocalData } from "@/lib/client/offline/vault-cache";
@@ -58,16 +59,16 @@ export function NetworkStatus() {
         role="status"
         aria-live="polite"
         action={(
-          <Stack direction="row" spacing={1}>
+          <ActionGroup compact>
             <Button color="inherit" size="small" startIcon={<SyncOutlined />} onClick={() => void synchronize()} disabled={busy || !session.online || session.readOnly}>
               同步
             </Button>
             <Button color="inherit" size="small" startIcon={<DeleteOutlined />} onClick={() => setConfirmClear(true)} disabled={busy}>
               清除本机数据
             </Button>
-          </Stack>
+          </ActionGroup>
         )}
-        sx={{ borderRadius: 0 }}
+        sx={{ borderRadius: 2 }}
       >
         {labels[session.connectivity]}
       </Alert>

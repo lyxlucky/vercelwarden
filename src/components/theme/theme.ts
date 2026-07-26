@@ -134,6 +134,9 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
     },
     spacing: density.spacing,
     shape: { borderRadius: componentRadius / 2 },
+    // MUI 9 transition components consume this value directly. Application-specific
+    // transitions use useReducedMotion for the same persisted + system behavior.
+    motion: { reducedMotion: appearance.motion === "reduced" ? "always" : "system" },
     typography: {
       fontFamily: 'Roboto, "Noto Sans SC", "Microsoft YaHei", "Segoe UI", Arial, sans-serif',
       h1: { fontSize: "clamp(1.5rem, 2vw, 2rem)", fontWeight: 720, lineHeight: 1.22, letterSpacing: "-0.018em" },
@@ -195,12 +198,13 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
             borderRadius: componentRadius,
             paddingInline: density.contentPadding,
             transition: muiTheme.transitions.create(["background-color", "border-color", "color", "box-shadow"], { duration: muiTheme.transitions.duration.shorter }),
+            "@media (pointer: coarse)": { minHeight: 44 },
             "&.Mui-focusVisible": {
               outline: `${focusWidth}px solid ${alpha(muiTheme.palette.primary.main, 0.28)}`,
               outlineOffset: 2,
             },
           }),
-          sizeSmall: { minHeight: density.smallControlHeight, paddingInline: Math.max(12, density.contentPadding - 6) },
+          sizeSmall: { minHeight: density.smallControlHeight, paddingInline: Math.max(12, density.contentPadding - 6), "@media (pointer: coarse)": { minHeight: 44 } },
           contained: ({ theme: muiTheme }) => ({
             boxShadow: appearance.surfaceStyle === "elevated" ? `0 2px 6px ${alpha(muiTheme.palette.primary.main, 0.22)}` : "none",
             "&:hover": { boxShadow: appearance.surfaceStyle === "elevated" ? `0 3px 9px ${alpha(muiTheme.palette.primary.main, 0.26)}` : "none" },
@@ -212,6 +216,7 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
           root: ({ theme: muiTheme }) => ({
             borderRadius: componentRadius,
             transition: muiTheme.transitions.create(["background-color", "color", "box-shadow"], { duration: muiTheme.transitions.duration.shorter }),
+            "@media (pointer: coarse)": { minWidth: 44, minHeight: 44 },
             "&.Mui-focusVisible": { outline: `${focusWidth}px solid ${alpha(muiTheme.palette.primary.main, 0.28)}`, outlineOffset: 2 },
           }),
         },
@@ -271,13 +276,68 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
       },
       MuiCardHeader: { styleOverrides: { root: { padding: density.contentPadding }, action: { marginTop: 0, alignSelf: "center" } } },
       MuiCardContent: { styleOverrides: { root: { padding: density.contentPadding, "&:last-child": { paddingBottom: density.contentPadding } } } },
-      MuiDialog: { defaultProps: { fullWidth: true, maxWidth: "sm" }, styleOverrides: { paper: { borderRadius: Math.min(componentRadius + 6, 22) } } },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: ({ theme: muiTheme }) => ({
+            backgroundImage: "none",
+            transition: muiTheme.transitions.create(["background-color", "border-color", "box-shadow"], { duration: muiTheme.transitions.duration.short }),
+          }),
+        },
+      },
+      MuiDialog: {
+        defaultProps: { fullWidth: true, maxWidth: "sm" },
+        styleOverrides: {
+          paper: ({ theme: muiTheme }) => ({
+            borderRadius: Math.min(componentRadius + 6, 22),
+            transition: muiTheme.transitions.create(["background-color", "border-color", "box-shadow"], { duration: muiTheme.transitions.duration.short }),
+          }),
+        },
+      },
       MuiDialogTitle: { styleOverrides: { root: { fontSize: "1.125rem", fontWeight: 700 } } },
-      MuiMenu: { styleOverrides: { paper: { borderRadius: componentRadius + 2, marginTop: 6 } } },
-      MuiListItemButton: { styleOverrides: { root: { borderRadius: componentRadius, transition: "background-color 160ms ease, color 160ms ease" } } },
+      MuiDialogActions: { styleOverrides: { root: { gap: density.spacing, padding: density.contentPadding } } },
+      MuiMenu: {
+        styleOverrides: {
+          paper: ({ theme: muiTheme }) => ({
+            borderRadius: componentRadius + 2,
+            marginTop: 6,
+            transition: muiTheme.transitions.create(["background-color", "border-color", "box-shadow"], { duration: muiTheme.transitions.duration.short }),
+          }),
+          list: { padding: 6 },
+        },
+      },
+      MuiMenuItem: {
+        styleOverrides: {
+          root: ({ theme: muiTheme }) => ({
+            minHeight: density.smallControlHeight,
+            borderRadius: Math.max(6, componentRadius - 2),
+            transition: muiTheme.transitions.create(["background-color", "color"], { duration: muiTheme.transitions.duration.shorter }),
+            "@media (pointer: coarse)": { minHeight: 44 },
+            "&.Mui-focusVisible": { outline: `${focusWidth}px solid ${alpha(muiTheme.palette.primary.main, 0.28)}`, outlineOffset: -2 },
+          }),
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: ({ theme: muiTheme }) => ({
+            borderRadius: componentRadius,
+            transition: muiTheme.transitions.create(["background-color", "color", "box-shadow"], { duration: muiTheme.transitions.duration.shorter }),
+            "@media (pointer: coarse)": { minHeight: 44 },
+            "&.Mui-focusVisible": { outline: `${focusWidth}px solid ${alpha(muiTheme.palette.primary.main, 0.28)}`, outlineOffset: -2 },
+          }),
+        },
+      },
       MuiTooltip: { defaultProps: { arrow: true, enterDelay: 450 }, styleOverrides: { tooltip: { borderRadius: Math.max(6, componentRadius - 2), fontSize: "0.75rem" } } },
       MuiLink: { defaultProps: { underline: "hover" } },
-      MuiAlert: { styleOverrides: { root: { alignItems: "center", borderRadius: componentRadius + 2 } } },
+      MuiAlert: {
+        styleOverrides: {
+          root: ({ theme: muiTheme }) => ({
+            alignItems: "center",
+            borderRadius: componentRadius + 2,
+            transition: muiTheme.transitions.create(["background-color", "border-color", "box-shadow", "opacity", "transform"], { duration: muiTheme.transitions.duration.short }),
+          }),
+        },
+      },
+      MuiSnackbarContent: { styleOverrides: { root: { borderRadius: componentRadius + 2 } } },
       MuiChip: { styleOverrides: { root: { borderRadius: Math.max(6, componentRadius - 2), fontWeight: 560 } } },
       MuiToggleButton: { styleOverrides: { root: { minHeight: density.controlHeight, borderRadius: `${componentRadius}px !important`, textTransform: "none", fontWeight: 600 } } },
       MuiSlider: { styleOverrides: { thumb: { width: 18, height: 18 }, valueLabel: { borderRadius: Math.max(6, componentRadius - 2) } } },

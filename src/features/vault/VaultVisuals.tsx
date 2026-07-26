@@ -41,7 +41,7 @@ export function VaultItemAvatar({ type, size = 40 }: { type: number; size?: numb
         height: size,
         bgcolor: (theme) => alpha(meta.color, theme.palette.mode === "dark" ? 0.24 : 0.12),
         color: meta.color,
-        borderRadius: "3px",
+        borderRadius: 2,
       }}
     >
       <Icon fontSize={size >= 48 ? "medium" : "small"} aria-hidden="true" />
@@ -61,7 +61,7 @@ export function VaultSection({ title, description, action, children, sx }: {
       component="section"
       aria-label={title}
       sx={[
-        { border: 1, borderColor: "divider", borderRadius: "4px", bgcolor: "background.paper", overflow: "hidden" },
+        { border: 1, borderColor: "divider", borderRadius: 3, bgcolor: "background.paper", overflow: "hidden" },
         ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
       ]}
     >
