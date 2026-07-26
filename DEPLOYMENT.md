@@ -207,6 +207,9 @@ vercel --prod
 | `ADMIN_PASSWORD` | ✅ | 管理后台密码 |
 | `DISABLE_REGISTRATION` | 可选 | `true` 关闭公开注册 |
 | `BLOB_READ_WRITE_TOKEN` | 可选 | Vercel Blob token (附件功能) |
+| `NOTIFICATIONS_MODE` | 可选 | `poll`（默认）、`sse` 或实验性的 `websocket` |
+| `VERCEL_WEBSOCKET_ENABLED` | WebSocket 必需 | 开启 Fluid Compute 后设为 `true`，显式确认运行时就绪 |
+| `NOTIFICATIONS_REDIS_URL` | 生产 WebSocket 必需 | 支持 TCP/TLS Pub/Sub 的 Redis URL，例如 `rediss://...` |
 
 ---
 
@@ -229,6 +232,25 @@ A: 需要在 Vercel Dashboard 配置 `BLOB_READ_WRITE_TOKEN`:
 1. 去 Vercel Dashboard → Storage → Create Database → Blob
 2. 复制 token 到环境变量
 3. 重新部署
+
+### Q: 如何启用 Bitwarden WebSocket 实时通知
+
+1. 在 Vercel 项目中启用 Fluid Compute。
+2. 准备支持长连接 Pub/Sub 的 Redis 服务；HTTP/REST-only Redis API 不能用于订阅。
+3. 在 Preview 环境先配置：
+
+```env
+NOTIFICATIONS_MODE=websocket
+VERCEL_WEBSOCKET_ENABLED=true
+NOTIFICATIONS_REDIS_URL=rediss://user:password@redis.example:6379
+```
+
+4. 重新部署后，用管理员 Bearer 会话访问 `/api/admin/notifications/health`，确认 `websocketReady` 与 broker `ready` 均为 `true`。
+5. Bitwarden 客户端仍只填写 `https://your-project.vercel.app`，不要手工填写 `ws://` 或 `wss://`。客户端会连接 `/notifications/hub`。
+
+当前 Hub Function 的 `maxDuration` 为 300 秒。到达时限后服务端发送允许重连的 SignalR close；官方客户端会自动重连并执行补偿性全量同步，45 秒 revision 轮询仍会修复漏失事件。WebSocket 活跃时长与流量按 Vercel Functions 计费，Redis 服务也可能产生额外费用。
+
+本地验证需使用 Vercel CLI 54.14.2 或更高版本运行 `vc dev`；普通 `next dev` 不提供 WebSocket upgrade 上下文。回滚只需将 `NOTIFICATIONS_MODE` 改回 `poll` 或 `sse` 并重新部署，不涉及数据库变更。
 
 ### Q: 如何更新?
 A:
