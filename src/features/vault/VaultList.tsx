@@ -7,6 +7,7 @@ import FavoriteOutlined from "@mui/icons-material/FavoriteOutlined";
 import { Box, Checkbox, Chip, ListItemButton, ListItemText, Stack, Tooltip } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { TaskState } from "@/components/feedback/TaskState";
+import { MONO_FONT } from "@/components/theme/theme";
 import type { VaultItemView } from "@/features/vault/store";
 import { VaultItemIcon, vaultTypeLabel } from "@/features/vault/VaultVisuals";
 
@@ -97,7 +98,10 @@ export function VaultList({ items, selectedId, checkedIds, selectionMode, onSele
                 <ListItemText
                   primary={item.name}
                   secondary={item.username || item.uris[0] || vaultTypeLabel(item.type)}
-                  slotProps={{ primary: { noWrap: true, sx: { fontWeight: 650 } }, secondary: { noWrap: true, variant: "body2" } }}
+                  slotProps={{
+                    primary: { noWrap: true, sx: { fontWeight: 650 } },
+                    secondary: { noWrap: true, variant: "body2", sx: { fontFamily: MONO_FONT, fontSize: "0.78rem", opacity: 0.85 } },
+                  }}
                 />
                 <Stack direction="row" sx={{ ml: 1, gap: 0.5, color: "text.secondary", alignItems: "center" }}>
                   {item.favorite ? <Tooltip title="收藏"><FavoriteOutlined sx={{ fontSize: 18 }} color="error" /></Tooltip> : null}

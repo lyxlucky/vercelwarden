@@ -11,11 +11,32 @@ export const THEME_STORAGE_KEY = "vercelwarden.theme";
 export const COLOR_SCHEME_STORAGE_KEY = "vercelwarden.color-scheme";
 export const THEME_ATTRIBUTE = "data-theme";
 
+// The signature. Every real secret — passwords, TOTP, keys, Send links, fingerprints —
+// renders in this face so the vault reads like a cryptographic ledger, not a form.
+export const MONO_FONT = 'var(--font-mono), "JetBrains Mono", "SFMono-Regular", ui-monospace, Consolas, monospace';
+export const DISPLAY_FONT = 'var(--font-display), var(--font-sans), "Noto Sans SC", "Microsoft YaHei", sans-serif';
+
+// Derived from the logo mark (public/brand/logo-mark.svg): a duotone shield.
+// periwinkle carries action/primary; teal is reserved for "verified / secure / live"
+// states (TOTP rings, strength peaks, encrypted badges, copy confirmations).
+export const BRAND = {
+  ink: "#0a0e17",
+  periwinkle: { light: "#4b5dd9", dark: "#7c8cff" },
+  teal: { light: "#0e9e8c", dark: "#52d6c5" },
+} as const;
+
+// Resolve the teal accent for the active scheme — the one token components read directly
+// when they need the "secure/verified" hue outside the MUI success palette.
+export function tealAccent(scheme: "light" | "dark") {
+  return BRAND.teal[scheme];
+}
+
 const accentColors: Record<AccentPreset, { light: string; dark: string }> = {
+  periwinkle: { light: "#4b5dd9", dark: "#7c8cff" },
   indigo: { light: "#5268d4", dark: "#9aa8ff" },
   blue: { light: "#2563c7", dark: "#7eb6ff" },
   cyan: { light: "#087f9c", dark: "#67d4ef" },
-  teal: { light: "#087f73", dark: "#5ed8c7" },
+  teal: { light: "#0e9e8c", dark: "#52d6c5" },
   green: { light: "#2f7d4d", dark: "#75d99b" },
   amber: { light: "#a86408", dark: "#f4bd57" },
   rose: { light: "#b54864", dark: "#f29aae" },
@@ -28,8 +49,8 @@ interface NeutralPalette {
 
 const neutralColors: Record<NeutralTone, NeutralPalette> = {
   cool: {
-    light: { background: "#f5f7fa", paper: "#ffffff", text: "#172033", secondaryText: "#586477", divider: "#dfe4eb", secondary: "#667085" },
-    dark: { background: "#0f141c", paper: "#171d27", text: "#f3f5f8", secondaryText: "#b5bfcc", divider: "#303a49", secondary: "#a8b3c2" },
+    light: { background: "#f4f6fb", paper: "#ffffff", text: "#141a26", secondaryText: "#55627a", divider: "#e2e7f0", secondary: "#55627a" },
+    dark: { background: "#0a0e17", paper: "#111725", text: "#e7ecf5", secondaryText: "#93a0b8", divider: "#24304a", secondary: "#93a0b8" },
   },
   neutral: {
     light: { background: "#f7f7f8", paper: "#ffffff", text: "#202124", secondaryText: "#62656a", divider: "#e1e2e5", secondary: "#6b6f76" },
@@ -96,7 +117,7 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
           error: { main: "#c83f49" },
           warning: { main: "#a86408" },
           info: { main: "#2563c7" },
-          success: { main: "#2f7d4d" },
+          success: { main: BRAND.teal.light, contrastText: "#ffffff" },
           background: { default: neutral.light.background, paper: neutral.light.paper },
           text: {
             primary: neutral.light.text,
@@ -117,7 +138,7 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
           error: { main: "#f08a91" },
           warning: { main: "#f4bd57" },
           info: { main: "#7eb6ff" },
-          success: { main: "#75d99b" },
+          success: { main: BRAND.teal.dark, contrastText: "#06201d" },
           background: { default: neutral.dark.background, paper: neutral.dark.paper },
           text: {
             primary: neutral.dark.text,
@@ -138,14 +159,20 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
     // transitions use useReducedMotion for the same persisted + system behavior.
     motion: { reducedMotion: appearance.motion === "reduced" ? "always" : "system" },
     typography: {
-      fontFamily: 'Roboto, "Noto Sans SC", "Microsoft YaHei", "Segoe UI", Arial, sans-serif',
-      h1: { fontSize: "clamp(1.5rem, 2vw, 2rem)", fontWeight: 720, lineHeight: 1.22, letterSpacing: "-0.018em" },
-      h2: { fontSize: "1.25rem", fontWeight: 700, lineHeight: 1.32, letterSpacing: "-0.01em" },
-      h6: { fontWeight: 680, lineHeight: 1.35 },
+      fontFamily: 'var(--font-sans), Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif',
+      h1: { fontFamily: DISPLAY_FONT, fontSize: "clamp(1.5rem, 2vw, 2rem)", fontWeight: 600, lineHeight: 1.18, letterSpacing: "-0.02em" },
+      h2: { fontFamily: DISPLAY_FONT, fontSize: "1.35rem", fontWeight: 600, lineHeight: 1.28, letterSpacing: "-0.015em" },
+      h3: { fontFamily: DISPLAY_FONT, fontSize: "1.15rem", fontWeight: 600, lineHeight: 1.3, letterSpacing: "-0.01em" },
+      h4: { fontFamily: DISPLAY_FONT, fontWeight: 600, lineHeight: 1.32, letterSpacing: "-0.01em" },
+      h5: { fontFamily: DISPLAY_FONT, fontWeight: 600, lineHeight: 1.34 },
+      h6: { fontFamily: DISPLAY_FONT, fontWeight: 600, lineHeight: 1.35 },
+      subtitle1: { fontWeight: 600, letterSpacing: "-0.005em" },
+      subtitle2: { fontWeight: 600 },
       body1: { lineHeight: 1.62 },
       body2: { lineHeight: 1.55 },
-      button: { fontWeight: 650, textTransform: "none", letterSpacing: "0.005em" },
-      overline: { fontWeight: 700, letterSpacing: "0.08em" },
+      button: { fontWeight: 600, textTransform: "none", letterSpacing: "0.005em" },
+      overline: { fontFamily: MONO_FONT, fontWeight: 600, fontSize: "0.68rem", letterSpacing: "0.16em", textTransform: "uppercase" },
+      caption: { letterSpacing: "0.002em" },
     },
     transitions: {
       easing: {
@@ -173,7 +200,17 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
             color: muiTheme.palette.text.primary,
             ...muiTheme.applyStyles("dark", { colorScheme: "dark" }),
           },
-          "::selection": { backgroundColor: alpha(muiTheme.palette.primary.main, 0.24) },
+          "::selection": { backgroundColor: alpha(muiTheme.palette.primary.main, 0.26) },
+          "code, kbd, samp, pre": { fontFamily: MONO_FONT },
+          "*::-webkit-scrollbar": { width: 10, height: 10 },
+          "*::-webkit-scrollbar-thumb": {
+            backgroundColor: alpha(muiTheme.palette.text.primary, 0.18),
+            borderRadius: 8,
+            border: "2px solid transparent",
+            backgroundClip: "content-box",
+          },
+          "*::-webkit-scrollbar-thumb:hover": { backgroundColor: alpha(muiTheme.palette.text.primary, 0.3) },
+          "*::-webkit-scrollbar-track": { backgroundColor: "transparent" },
           "html[data-vw-motion='reduced'] *, html[data-vw-motion='reduced'] *::before, html[data-vw-motion='reduced'] *::after": {
             animationDuration: "0.01ms !important",
             animationIterationCount: "1 !important",

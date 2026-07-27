@@ -37,10 +37,11 @@ import {
 } from "@/lib/client/state/preferences";
 
 const accentOptions = [
+  { value: "periwinkle", label: "品牌紫蓝", color: "#4b5dd9" },
   { value: "indigo", label: "靛蓝", color: "#5268d4" },
   { value: "blue", label: "蓝色", color: "#2563c7" },
   { value: "cyan", label: "青蓝", color: "#087f9c" },
-  { value: "teal", label: "青绿", color: "#087f73" },
+  { value: "teal", label: "青绿", color: "#0e9e8c" },
   { value: "green", label: "绿色", color: "#2f7d4d" },
   { value: "amber", label: "琥珀", color: "#a86408" },
   { value: "rose", label: "玫红", color: "#b54864" },

@@ -15,14 +15,14 @@ import { Avatar, Box, Stack, Typography } from "@mui/material";
 import { alpha, type SxProps, type Theme } from "@mui/material/styles";
 
 const TYPE_META: Record<number, { label: string; icon: ElementType; color: string }> = {
-  1: { label: "登录", icon: KeyOutlined, color: "#1565c0" },
-  2: { label: "安全笔记", icon: DescriptionOutlined, color: "#6a1b9a" },
-  3: { label: "银行卡", icon: CreditCardOutlined, color: "#00838f" },
-  4: { label: "身份信息", icon: BadgeOutlined, color: "#ad1457" },
-  5: { label: "SSH 密钥", icon: DriveFileRenameOutlineOutlined, color: "#455a64" },
-  6: { label: "银行账户", icon: AccountBalanceOutlined, color: "#2e7d32" },
-  7: { label: "驾驶证", icon: NoteAltOutlined, color: "#ef6c00" },
-  8: { label: "护照", icon: PublicOutlined, color: "#283593" },
+  1: { label: "登录", icon: KeyOutlined, color: "#5a6cf0" },
+  2: { label: "安全笔记", icon: DescriptionOutlined, color: "#9a86ff" },
+  3: { label: "银行卡", icon: CreditCardOutlined, color: "#12a594" },
+  4: { label: "身份信息", icon: BadgeOutlined, color: "#e0679a" },
+  5: { label: "SSH 密钥", icon: DriveFileRenameOutlineOutlined, color: "#7c8aa5" },
+  6: { label: "银行账户", icon: AccountBalanceOutlined, color: "#3fae6f" },
+  7: { label: "驾驶证", icon: NoteAltOutlined, color: "#d98a2b" },
+  8: { label: "护照", icon: PublicOutlined, color: "#5b6ee0" },
 };
 
 // Shared type → icon map so navigation, list, and detail never drift apart.

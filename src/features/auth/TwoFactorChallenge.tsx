@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import { AppLink } from "@/components/theme/AppLink";
 import { AuthPanel } from "@/components/ui/AuthShell";
+import { MONO_FONT } from "@/components/theme/theme";
 
 const providerLabels: Record<number, string> = { 0: "验证器", 3: "YubiKey", 7: "Passkey" };
 
@@ -105,6 +106,7 @@ export function TwoFactorChallenge({
           autoComplete="one-time-code"
           required
           autoFocus
+          slotProps={{ input: { sx: { fontFamily: MONO_FONT, letterSpacing: "0.3em", fontVariantNumeric: "tabular-nums" } } }}
           helperText={provider === 0 ? "输入验证器中显示的 6 位动态验证码" : provider === 3 ? "轻触 YubiKey 后输入一次性密码" : "按照浏览器提示完成 Passkey 验证"}
         />
         {error ? <Alert ref={errorRef} tabIndex={-1} severity="error" role="alert">{error}</Alert> : null}

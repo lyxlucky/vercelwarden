@@ -1,4 +1,4 @@
-export const ACCENT_PRESETS = ["indigo", "blue", "cyan", "teal", "green", "amber", "rose"] as const;
+export const ACCENT_PRESETS = ["periwinkle", "indigo", "blue", "cyan", "teal", "green", "amber", "rose"] as const;
 export const NEUTRAL_TONES = ["cool", "neutral", "warm"] as const;
 export const UI_DENSITIES = ["compact", "balanced", "comfortable"] as const;
 export const SURFACE_STYLES = ["outlined", "soft", "elevated"] as const;
@@ -26,13 +26,13 @@ export interface AppearancePreferences {
 }
 
 export const DEFAULT_APPEARANCE: AppearancePreferences = {
-  accent: "indigo",
-  customAccent: "#5268d4",
+  accent: "periwinkle",
+  customAccent: "#4b5dd9",
   neutralTone: "cool",
-  radius: 10,
+  radius: 12,
   density: "balanced",
   fontScale: 1,
-  surfaceStyle: "soft",
+  surfaceStyle: "outlined",
   contrast: "standard",
   motion: "system",
 };

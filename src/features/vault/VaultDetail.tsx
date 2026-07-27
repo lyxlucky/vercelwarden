@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   ArchiveOutlined,
-  CheckOutlined,
-  ContentCopyOutlined,
   DeleteOutlineOutlined,
   EditOutlined,
   FavoriteBorderOutlined,
@@ -14,8 +12,6 @@ import {
   OpenInNewOutlined,
   RestoreOutlined,
   ScheduleOutlined,
-  VisibilityOffOutlined,
-  VisibilityOutlined,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -39,8 +35,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import { TaskState } from "@/components/feedback/TaskState";
+import { CopyButton, LedgerRow, SecretField, useCopy } from "@/components/ui/SecretField";
+import { MONO_FONT } from "@/components/theme/theme";
 import { verifyMasterPassword } from "@/features/auth/api";
 import type { VaultItemView } from "@/features/vault/store";
 import { VaultItemIcon, VaultSection, vaultTypeLabel } from "@/features/vault/VaultVisuals";
@@ -56,31 +53,6 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function FieldRow({ label, value, actions, mono = false }: { label: string; value: ReactNode; actions?: ReactNode; mono?: boolean }) {
-  return (
-    <Stack
-      direction="row"
-      sx={{
-        minHeight: 64,
-        alignItems: "center",
-        gap: 1.5,
-        px: 2,
-        py: 1,
-        borderRadius: 2,
-        borderLeft: 3,
-        borderColor: "divider",
-        bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.055 : 0.035),
-      }}
-    >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25, fontWeight: 650 }}>{label}</Typography>
-        <Typography component={mono ? "code" : "div"} sx={{ overflowWrap: "anywhere", fontFamily: mono ? '"Roboto Mono", "SFMono-Regular", Consolas, monospace' : undefined, fontSize: mono ? "0.9rem" : undefined }}>{value}</Typography>
-      </Box>
-      {actions ? <Stack direction="row" sx={{ alignItems: "center", flex: "0 0 auto" }}>{actions}</Stack> : null}
-    </Stack>
-  );
-}
-
 export type VaultDetailAction = "favorite" | "archive" | "unarchive" | "trash" | "restore" | "permanent";
 
 export function VaultDetail({ item, onEdit, onAction }: {
@@ -88,9 +60,7 @@ export function VaultDetail({ item, onEdit, onAction }: {
   onEdit?(item: VaultItemView): void;
   onAction?(action: VaultDetailAction, item: VaultItemView): void;
 }) {
-  const [visible, setVisible] = useState<Set<string>>(new Set());
-  const [copied, setCopied] = useState<string | null>(null);
-  const [copyError, setCopyError] = useState<string | null>(null);
+  const { copiedKey, copy, error: copyError, clearError } = useCopy();
   const [pendingSensitiveAction, setPendingSensitiveAction] = useState<(() => void | Promise<void>) | null>(null);
   const [repromptPassword, setRepromptPassword] = useState("");
   const [repromptError, setRepromptError] = useState<string | null>(null);
@@ -105,55 +75,13 @@ export function VaultDetail({ item, onEdit, onAction }: {
     );
   }
 
-  const reveal = (field: string) => setVisible((current) => {
-    const next = new Set(current);
-    if (next.has(field)) next.delete(field); else next.add(field);
-    return next;
-  });
-  const copy = async (field: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopyError(null);
-      setCopied(field);
-      window.setTimeout(() => setCopied((current) => current === field ? null : current), 1800);
-    } catch {
-      setCopyError("浏览器拒绝了剪贴板访问，请手动选择并复制。");
-    }
-  };
+  // Items flagged with reprompt require re-entering the master password before any
+  // secret is revealed or copied. The action is stashed and replayed after verification.
   const authorizeSensitive = (action: () => void | Promise<void>) => {
     if (item.reprompt !== 1) { void action(); return; }
     setPendingSensitiveAction(() => action);
     setRepromptPassword("");
     setRepromptError(null);
-  };
-  const copyButton = (field: string, label: string, value: string) => (
-    <Tooltip title={`${copied === field ? "已复制" : "复制"}${label}`}>
-      <IconButton size="small" aria-label={`${copied === field ? "已复制" : "复制"}${label}`} onClick={() => authorizeSensitive(() => copy(field, value))}>
-        {copied === field ? <CheckOutlined color="success" /> : <ContentCopyOutlined />}
-      </IconButton>
-    </Tooltip>
-  );
-  const secretRow = (field: string, label: string, value: string) => {
-    if (!value) return null;
-    const shown = visible.has(field);
-    return (
-      <FieldRow
-        key={field}
-        label={label}
-        mono
-        value={shown ? value : "••••••••••••"}
-        actions={(
-          <>
-            <Tooltip title={`${shown ? "隐藏" : "显示"}${label}`}>
-              <IconButton size="small" aria-label={`${shown ? "隐藏" : "显示"}${label}`} onClick={() => authorizeSensitive(() => reveal(field))}>
-                {shown ? <VisibilityOffOutlined /> : <VisibilityOutlined />}
-              </IconButton>
-            </Tooltip>
-            {copyButton(field, label, value)}
-          </>
-        )}
-      />
-    );
   };
 
   return (
@@ -164,11 +92,13 @@ export function VaultDetail({ item, onEdit, onAction }: {
             <Stack direction="row" sx={{ alignItems: "center", gap: 2, minWidth: 0 }}>
               <VaultItemIcon type={item.type} uris={item.uris} size={56} />
               <Box sx={{ minWidth: 0 }}>
+                <Typography component="div" sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", letterSpacing: "0.16em", textTransform: "uppercase", color: "text.secondary", mb: 0.25 }}>
+                  {vaultTypeLabel(item.type)}
+                </Typography>
                 <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                   <Typography component="h1" variant="h1" sx={{ overflowWrap: "anywhere", fontSize: { xs: "1.35rem", sm: "1.6rem" }, lineHeight: 1.25 }}>{item.name}</Typography>
                   {item.favorite ? <Chip icon={<FavoriteOutlined />} color="error" label="收藏" size="small" variant="outlined" /> : null}
                 </Stack>
-                <Typography color="text.secondary" sx={{ mt: 0.5 }}>{vaultTypeLabel(item.type)}</Typography>
               </Box>
             </Stack>
             <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", alignSelf: "stretch", "@container vaultDetail (min-width: 560px)": { alignSelf: "center" } }}>
@@ -196,37 +126,40 @@ export function VaultDetail({ item, onEdit, onAction }: {
             {!item.archivedAt ? <MenuItem onClick={() => { setActionAnchor(null); onAction?.("archive", item); }}><ListItemIcon><ArchiveOutlined fontSize="small" /></ListItemIcon><ListItemText>归档</ListItemText></MenuItem> : null}
           </Menu>
 
-          {copyError ? <Alert severity="warning" onClose={() => setCopyError(null)}>{copyError}</Alert> : null}
+          {copyError ? <Alert severity="warning" onClose={clearError}>{copyError}</Alert> : null}
 
           {(item.username || item.password || item.uris.length > 0) ? (
             <VaultSection title="账号" description="登录凭据与关联网站">
               <Stack spacing={1}>
-                {secretRow("username", "用户名", item.username)}
-                {secretRow("password", "密码", item.password)}
+                <SecretField label="用户名" fieldKey="username" value={item.username} secret copiedKey={copiedKey} onCopy={copy} authorize={authorizeSensitive} />
+                <SecretField label="密码" fieldKey="password" value={item.password} secret copiedKey={copiedKey} onCopy={copy} authorize={authorizeSensitive} />
                 {item.uris.map((uri, index) => (
-                  <FieldRow
+                  <LedgerRow
                     key={`${uri}-${index}`}
                     label="网站"
-                    value={<Link href={uri} target="_blank" rel="noreferrer">{uri}</Link>}
                     actions={(
                       <>
-                        <Tooltip title="打开网站"><IconButton size="small" component="a" href={uri} target="_blank" rel="noreferrer" aria-label="打开网站"><OpenInNewOutlined /></IconButton></Tooltip>
-                        {copyButton(`uri-${index}`, "网站", uri)}
+                        <Tooltip title="打开网站"><IconButton size="small" component="a" href={uri} target="_blank" rel="noreferrer" aria-label="打开网站" sx={{ cursor: "pointer" }}><OpenInNewOutlined fontSize="small" /></IconButton></Tooltip>
+                        <CopyButton copied={copiedKey === `uri-${index}`} label="网站" onCopy={() => copy(`uri-${index}`, uri)} />
                       </>
                     )}
-                  />
+                  >
+                    <Link href={uri} target="_blank" rel="noreferrer" sx={{ fontFamily: MONO_FONT, fontSize: "0.9rem", overflowWrap: "anywhere" }}>{uri}</Link>
+                  </LedgerRow>
                 ))}
               </Stack>
             </VaultSection>
           ) : null}
 
-          {item.details.length > 0 ? <VaultSection title={`${vaultTypeLabel(item.type)}详情`}><Stack spacing={1}>{item.details.map((field, index) => secretRow(`detail-${index}`, field.name || "字段", field.value))}</Stack></VaultSection> : null}
-          {item.customFields.length > 0 ? <VaultSection title="自定义字段"><Stack spacing={1}>{item.customFields.map((field, index) => secretRow(`custom-${index}`, field.name || "字段", field.value))}</Stack></VaultSection> : null}
+          {item.details.length > 0 ? <VaultSection title={`${vaultTypeLabel(item.type)}详情`}><Stack spacing={1}>{item.details.map((field, index) => <SecretField key={`detail-${index}`} label={field.name || "字段"} fieldKey={`detail-${index}`} value={field.value} secret copiedKey={copiedKey} onCopy={copy} authorize={authorizeSensitive} />)}</Stack></VaultSection> : null}
+          {item.customFields.length > 0 ? <VaultSection title="自定义字段"><Stack spacing={1}>{item.customFields.map((field, index) => <SecretField key={`custom-${index}`} label={field.name || "字段"} fieldKey={`custom-${index}`} value={field.value} secret copiedKey={copiedKey} onCopy={copy} authorize={authorizeSensitive} />)}</Stack></VaultSection> : null}
 
           {item.attachments.length > 0 ? (
             <VaultSection title="附件" description={`${item.attachments.length} 个加密文件`}>
               <Stack spacing={1}>{item.attachments.map((attachment) => (
-                <FieldRow key={attachment.id} label={formatBytes(attachment.size)} value={attachment.fileName} actions={<InsertDriveFileOutlined color="action" />} />
+                <LedgerRow key={attachment.id} label={formatBytes(attachment.size)} actions={<InsertDriveFileOutlined color="action" />}>
+                  <Typography component="span" sx={{ overflowWrap: "anywhere" }}>{attachment.fileName}</Typography>
+                </LedgerRow>
               ))}</Stack>
             </VaultSection>
           ) : null}
@@ -234,7 +167,16 @@ export function VaultDetail({ item, onEdit, onAction }: {
           {item.passwordHistory.length > 0 ? (
             <VaultSection title="密码历史" description="历史密码默认保持隐藏">
               <Stack spacing={1}>{item.passwordHistory.map((entry, index) => (
-                <FieldRow key={`${entry.lastUsedDate ?? "unknown"}-${index}`} label={entry.lastUsedDate ? formatDate(entry.lastUsedDate) : "未知日期"} mono value="••••••••••••" actions={copyButton(`history-${index}`, "历史密码", entry.password)} />
+                <SecretField
+                  key={`${entry.lastUsedDate ?? "unknown"}-${index}`}
+                  label={entry.lastUsedDate ? formatDate(entry.lastUsedDate) : "未知日期"}
+                  fieldKey={`history-${index}`}
+                  value={entry.password}
+                  secret
+                  copiedKey={copiedKey}
+                  onCopy={copy}
+                  authorize={authorizeSensitive}
+                />
               ))}</Stack>
             </VaultSection>
           ) : null}
@@ -243,8 +185,8 @@ export function VaultDetail({ item, onEdit, onAction }: {
 
           <VaultSection title="时间信息">
             <Stack direction={{ xs: "column", sm: "row" }} divider={<Divider flexItem orientation="vertical" />} sx={{ gap: 2 }}>
-              <Stack direction="row" sx={{ gap: 1, alignItems: "center", flex: 1 }}><ScheduleOutlined color="action" /><Box><Typography variant="caption" color="text.secondary">创建</Typography><Typography variant="body2">{formatDate(item.createdAt)}</Typography></Box></Stack>
-              <Stack direction="row" sx={{ gap: 1, alignItems: "center", flex: 1 }}><HistoryOutlined color="action" /><Box><Typography variant="caption" color="text.secondary">最后修改</Typography><Typography variant="body2">{formatDate(item.updatedAt)}</Typography></Box></Stack>
+              <Stack direction="row" sx={{ gap: 1, alignItems: "center", flex: 1 }}><ScheduleOutlined color="action" /><Box><Typography variant="caption" color="text.secondary">创建</Typography><Typography variant="body2" sx={{ fontFamily: MONO_FONT }}>{formatDate(item.createdAt)}</Typography></Box></Stack>
+              <Stack direction="row" sx={{ gap: 1, alignItems: "center", flex: 1 }}><HistoryOutlined color="action" /><Box><Typography variant="caption" color="text.secondary">最后修改</Typography><Typography variant="body2" sx={{ fontFamily: MONO_FONT }}>{formatDate(item.updatedAt)}</Typography></Box></Stack>
             </Stack>
           </VaultSection>
         </Stack>

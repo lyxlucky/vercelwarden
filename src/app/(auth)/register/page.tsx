@@ -16,7 +16,9 @@ import { useRouter } from "next/navigation";
 import { AsyncState } from "@/components/ui/AsyncState";
 import { AppLink } from "@/components/theme/AppLink";
 import { AuthPanel, PasswordField } from "@/components/ui/AuthShell";
+import { StrengthMeter } from "@/components/ui/StrengthMeter";
 import { fetchServerConfig, registerAccount } from "@/features/auth/api";
+import { passwordStrength } from "@/features/generator/generator";
 
 type Values = {
   email: string;
@@ -166,6 +168,9 @@ export default function RegisterPage() {
             helperText={confirmError || "再次输入以避免拼写错误"}
           />
         </Box>
+        {values.password ? (
+          <StrengthMeter {...passwordStrength(values.password)} />
+        ) : null}
         <TextField
           label="密码提示"
           value={values.hint}

@@ -1,4 +1,5 @@
 import { Box, Stack, Typography, type SxProps, type Theme } from "@mui/material";
+import { DISPLAY_FONT } from "@/components/theme/theme";
 
 const LOGO_SOURCE = "/brand/logo-mark.svg";
 
@@ -48,7 +49,7 @@ export function BrandLockup({
       <Box sx={{ minWidth: 0 }}>
         <Typography
           component="span"
-          sx={[{ display: "block", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.15 }, ...(Array.isArray(nameSx) ? nameSx : [nameSx])]}
+          sx={[{ display: "block", fontFamily: DISPLAY_FONT, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.15 }, ...(Array.isArray(nameSx) ? nameSx : [nameSx])]}
         >
           VercelWarden
         </Typography>
