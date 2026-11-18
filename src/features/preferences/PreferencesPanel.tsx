@@ -17,6 +17,7 @@ import {
   Paper,
   Select,
   Slider,
+  Snackbar,
   Stack,
   TextField,
   ToggleButton,
@@ -24,12 +25,13 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, type Theme } from "@mui/material/styles";
 import {
   DEFAULT_APPEARANCE,
   type AppearancePreferences,
 } from "@/components/theme/appearance";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 import {
   loadPreferences,
   savePreferences,
@@ -58,6 +60,37 @@ const fontScaleMarks = [
   { value: 1, label: "100%" },
   { value: 1.15, label: "115%" },
 ];
+
+const preferenceGrid = {
+  display: "grid",
+  gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "repeat(2, minmax(0, 1fr))" },
+  columnGap: 3,
+  rowGap: 3,
+};
+
+const toggleGroupLayout = {
+  gap: 1.25,
+  "& .MuiToggleButtonGroup-grouped": {
+    flex: "1 1 0",
+    minWidth: 0,
+    px: 0.75,
+    overflowWrap: "anywhere",
+  },
+  "& .MuiToggleButtonGroup-grouped:not(:first-of-type)": {
+    ml: 0,
+    borderInlineStart: "1px solid",
+    borderInlineStartColor: "divider",
+  },
+  "& .MuiToggleButtonGroup-grouped.Mui-selected": {
+    borderColor: "primary.main",
+  },
+};
+
+const sliderLayout = {
+  mx: 2,
+  mt: 1,
+  width: (theme: Theme) => `calc(100% - ${theme.spacing(4)})`,
+};
 
 export function PreferencesPanel() {
   const [preferences, setPreferences] = useState<ClientPreferences>(loadPreferences);
@@ -95,17 +128,16 @@ export function PreferencesPanel() {
   const appearance = preferences.appearance;
 
   return (
-    <Stack spacing={3}>
-      <Box role="status" aria-live="polite" sx={{ minHeight: 24 }}>
-        {status ? <Alert severity="success" sx={{ py: 0 }}>{status}</Alert> : null}
-      </Box>
-
+    <Stack useFlexGap spacing={{ xs: 2, md: 3 }}>
+      <Snackbar open={Boolean(status)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
+        <Alert severity="success" role="status">{status}</Alert>
+      </Snackbar>
       <SectionCard
         title="主题与强调色"
         description="外观调整会即时应用并自动保存在当前浏览器。账号密钥和密码数据不会进入主题配置。"
         action={<Button size="small" variant="text" startIcon={<RestartAltOutlined />} onClick={resetAppearance}>恢复默认</Button>}
       >
-        <Stack spacing={3}>
+        <Box sx={preferenceGrid}>
           <Box>
             <Typography component="h3" variant="subtitle2" sx={{ mb: 1 }}>明暗模式</Typography>
             <ToggleButtonGroup
@@ -116,58 +148,12 @@ export function PreferencesPanel() {
               }}
               aria-label="明暗模式"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="system">跟随系统</ToggleButton>
               <ToggleButton value="light">浅色</ToggleButton>
               <ToggleButton value="dark">深色</ToggleButton>
             </ToggleButtonGroup>
-          </Box>
-
-          <Box>
-            <Typography component="h3" variant="subtitle2">强调色</Typography>
-            <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5, mb: 1.5 }}>用于主要操作、焦点、选中项和链接；状态色仍保持独立语义。</Typography>
-            <Stack direction="row" sx={{ gap: 1.25, flexWrap: "wrap", alignItems: "center" }}>
-              {accentOptions.map((option) => {
-                const selected = appearance.accent === option.value;
-                return (
-                  <Tooltip key={option.value} title={option.label}>
-                    <ButtonBase
-                      aria-label={`使用${option.label}强调色`}
-                      aria-pressed={selected}
-                      onClick={() => updateAppearance({ accent: option.value })}
-                      sx={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: "50%",
-                        bgcolor: option.color,
-                        color: "#fff",
-                        border: "3px solid",
-                        borderColor: selected ? "text.primary" : "transparent",
-                        boxShadow: selected ? (theme) => `0 0 0 2px ${theme.palette.background.paper}` : "none",
-                        transition: (theme) => theme.transitions.create(
-                          ["border-color", "box-shadow"],
-                          { duration: theme.transitions.duration.shorter },
-                        ),
-                        "&:focus-visible": { outline: "3px solid", outlineColor: "primary.main", outlineOffset: 3 },
-                      }}
-                    >
-                      {selected ? <CheckOutlined fontSize="small" /> : null}
-                    </ButtonBase>
-                  </Tooltip>
-                );
-              })}
-              <TextField
-                label="自定义"
-                type="color"
-                value={appearance.customAccent}
-                onChange={(event) => updateAppearance({ accent: "custom", customAccent: event.target.value })}
-                slotProps={{
-                  htmlInput: { "aria-label": "自定义强调色" },
-                  inputLabel: { shrink: true },
-                }}
-                sx={{ width: 112, "& input": { minHeight: 24, cursor: "pointer", paddingBlock: 0.75 } }}
-              />
-            </Stack>
           </Box>
 
           <Box>
@@ -180,19 +166,73 @@ export function PreferencesPanel() {
               }}
               aria-label="中性色调"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="cool">冷灰</ToggleButton>
               <ToggleButton value="neutral">中性灰</ToggleButton>
               <ToggleButton value="warm">暖灰</ToggleButton>
             </ToggleButtonGroup>
           </Box>
-        </Stack>
+
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Typography component="h3" variant="subtitle2">强调色</Typography>
+            <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5, mb: 1.5 }}>用于主要操作、焦点、选中项和链接；状态色仍保持独立语义。</Typography>
+            <ActionGroup sx={{ gap: 2 }}>
+              <Box
+                role="group"
+                aria-label="预设强调色"
+                sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(4, 44px)", sm: "repeat(8, 44px)" }, gap: "8px" }}
+              >
+                {accentOptions.map((option) => {
+                  const selected = appearance.accent === option.value;
+                  return (
+                    <Tooltip key={option.value} title={option.label}>
+                      <ButtonBase
+                        aria-label={`使用${option.label}强调色`}
+                        aria-pressed={selected}
+                        onClick={() => updateAppearance({ accent: option.value })}
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: "50%",
+                          bgcolor: option.color,
+                          color: "#fff",
+                          border: "3px solid",
+                          borderColor: selected ? "text.primary" : "transparent",
+                          boxShadow: selected ? (theme) => `0 0 0 2px ${theme.palette.background.paper}` : "none",
+                          transition: (theme) => theme.transitions.create(
+                            ["border-color", "box-shadow"],
+                            { duration: theme.transitions.duration.shorter },
+                          ),
+                          "&:focus-visible": { outline: "3px solid", outlineColor: "primary.main", outlineOffset: 3 },
+                        }}
+                      >
+                        {selected ? <CheckOutlined fontSize="small" /> : null}
+                      </ButtonBase>
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+              <TextField
+                label="自定义"
+                type="color"
+                value={appearance.customAccent}
+                onChange={(event) => updateAppearance({ accent: "custom", customAccent: event.target.value })}
+                slotProps={{
+                  htmlInput: { "aria-label": "自定义强调色" },
+                  inputLabel: { shrink: true },
+                }}
+                sx={{ width: 112, "& input": { minHeight: 24, cursor: "pointer", paddingBlock: 0.75 } }}
+              />
+            </ActionGroup>
+          </Box>
+        </Box>
       </SectionCard>
 
       <SectionCard title="形状、密度与层次" description="这些令牌会统一作用于按钮、输入框、卡片、对话框、菜单和页面间距。">
-        <Stack spacing={3.5}>
+        <Box sx={preferenceGrid}>
           <Box>
-            <Stack direction="row" sx={{ justifyContent: "space-between", gap: 2 }}>
+            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
               <Typography component="h3" variant="subtitle2">组件圆角</Typography>
               <Chip size="small" variant="outlined" label={`${appearance.radius}px`} />
             </Stack>
@@ -203,9 +243,8 @@ export function PreferencesPanel() {
               step={1}
               marks={radiusMarks}
               value={appearance.radius}
-              valueLabelDisplay="auto"
               onChange={(_event, value) => updateAppearance({ radius: value as number })}
-              sx={{ mt: 1, px: 0.5 }}
+              sx={sliderLayout}
             />
             <FormHelperText sx={{ mx: 0 }}>默认 10px，属于适度圆润；调高后容器圆角也会按比例增大。</FormHelperText>
           </Box>
@@ -220,6 +259,7 @@ export function PreferencesPanel() {
               }}
               aria-label="界面密度"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="compact">紧凑</ToggleButton>
               <ToggleButton value="balanced">均衡</ToggleButton>
@@ -228,7 +268,7 @@ export function PreferencesPanel() {
           </Box>
 
           <Box>
-            <Stack direction="row" sx={{ justifyContent: "space-between", gap: 2 }}>
+            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
               <Typography component="h3" variant="subtitle2">全局字号</Typography>
               <Chip size="small" variant="outlined" label={`${Math.round(appearance.fontScale * 100)}%`} />
             </Stack>
@@ -239,10 +279,9 @@ export function PreferencesPanel() {
               step={0.05}
               marks={fontScaleMarks}
               value={appearance.fontScale}
-              valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
-              valueLabelDisplay="auto"
+              getAriaValueText={(value) => `${Math.round(value * 100)}%`}
               onChange={(_event, value) => updateAppearance({ fontScale: value as number })}
-              sx={{ mt: 1, px: 0.5 }}
+              sx={sliderLayout}
             />
           </Box>
 
@@ -256,17 +295,18 @@ export function PreferencesPanel() {
               }}
               aria-label="表面层次"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="outlined">描边</ToggleButton>
               <ToggleButton value="soft">轻柔</ToggleButton>
               <ToggleButton value="elevated">浮起</ToggleButton>
             </ToggleButtonGroup>
           </Box>
-        </Stack>
+        </Box>
       </SectionCard>
 
       <SectionCard title="可访问性" description="高对比度会增强文字、边界和焦点提示；减少动效不会影响功能。">
-        <Stack spacing={2.5}>
+        <Box sx={preferenceGrid}>
           <Box>
             <Typography component="h3" variant="subtitle2" sx={{ mb: 1 }}>对比度</Typography>
             <ToggleButtonGroup
@@ -277,6 +317,7 @@ export function PreferencesPanel() {
               }}
               aria-label="对比度"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="standard">标准</ToggleButton>
               <ToggleButton value="high">增强</ToggleButton>
@@ -292,12 +333,13 @@ export function PreferencesPanel() {
               }}
               aria-label="界面动效"
               fullWidth
+              sx={toggleGroupLayout}
             >
               <ToggleButton value="system">跟随系统</ToggleButton>
               <ToggleButton value="reduced">减少动效</ToggleButton>
             </ToggleButtonGroup>
           </Box>
-        </Stack>
+        </Box>
       </SectionCard>
 
       <SectionCard title="实时预览" description="预览使用与应用其他页面完全相同的全局 MUI 主题。">
@@ -321,17 +363,17 @@ export function PreferencesPanel() {
               </Stack>
             </Stack>
             <TextField label="项目名称" value="示例登录项" slotProps={{ htmlInput: { readOnly: true } }} />
-            <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
+            <ActionGroup>
               <Button variant="contained">主要操作</Button>
               <Button variant="outlined">次要操作</Button>
               <Button variant="text">文本操作</Button>
-            </Stack>
+            </ActionGroup>
           </Stack>
         </Paper>
       </SectionCard>
 
       <SectionCard title="语言与安全超时" description="这些偏好在点击保存后生效，并且只保存在当前浏览器。">
-        <Stack spacing={2.25}>
+        <Box sx={{ ...preferenceGrid, gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "repeat(3, minmax(0, 1fr))" } }}>
           <FormControl>
             <InputLabel id="locale-label">语言</InputLabel>
             <Select labelId="locale-label" label="语言" value={preferences.locale} onChange={(event) => setPreferences({ ...preferences, locale: event.target.value as ClientPreferences["locale"] })}>
@@ -356,8 +398,8 @@ export function PreferencesPanel() {
               <MenuItem value="logout">退出账号</MenuItem>
             </Select>
           </FormControl>
-          <Button variant="contained" startIcon={<SaveOutlined />} onClick={saveGeneralPreferences} sx={{ alignSelf: "flex-start" }}>保存本机偏好</Button>
-        </Stack>
+          <Button variant="contained" startIcon={<SaveOutlined />} onClick={saveGeneralPreferences} sx={{ gridColumn: "1 / -1", justifySelf: { xs: "stretch", sm: "end" } }}>保存本机偏好</Button>
+        </Box>
       </SectionCard>
     </Stack>
   );
