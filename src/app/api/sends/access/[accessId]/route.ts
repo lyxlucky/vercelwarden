@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { sendFiles, users } from "@/db/schema";
 import { errorResponse, jsonResponse, notFound } from "@/lib/responses";
 import { serializeSendAccess, uuidFromAccessId } from "@/lib/send";
-import { consumeSendAccess, peekSendAccess } from "@/lib/server/sends/service";
+import { consumeSendAccess, peekSendAccess, sendUnavailableResponse } from "@/lib/server/sends/service";
 
 async function creatorEmail(hideEmail: boolean, userUuid: string) {
   if (hideEmail) return null;
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Verify availability + password without spending an access, and learn the type.
   const peek = await peekSendAccess(sendUuid, password);
   if (peek.status === "invalid_password") return errorResponse("Invalid password", 401);
-  if (peek.status !== "ok") return notFound("Send not found or no longer available");
+  if (peek.status !== "ok") return sendUnavailableResponse(peek.reason);
 
   if (peek.send.type === 1) {
     // File Send: return metadata only. The access is consumed at download time
@@ -34,10 +34,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return jsonResponse(serializeSendAccess(peek.send, creatorIdentifier, file, null));
   }
 
+  if (body?.preview === true) return jsonResponse({ object: "send-text-preview" });
+
   // Text Send: viewing IS the access — consume it now.
   const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, password));
   if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
-  if (result.status !== "ok") return notFound("Send not found or no longer available");
+  if (result.status !== "ok") return sendUnavailableResponse(result.reason);
   const creatorIdentifier = await creatorEmail(result.send.hideEmail, result.send.userUuid);
   return jsonResponse(serializeSendAccess(result.send, creatorIdentifier, null, null));
 }

@@ -8,6 +8,7 @@ import { uuidFromAccessId } from "@/lib/send";
 import {
   consumeSendAccess,
   issueSendFileDownloadToken,
+  sendUnavailableResponse,
   verifySendFileDownloadToken,
 } from "@/lib/server/sends/service";
 
@@ -69,7 +70,8 @@ export async function POST(
     const issued = issueSendFileDownloadToken({ sendUuid, fileUuid: fileId });
     const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, password));
     if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
-    if (result.status !== "ok" || result.send.type !== 1) return notFound("Send not found or no longer available");
+    if (result.status !== "ok") return sendUnavailableResponse(result.reason);
+    if (result.send.type !== 1) return notFound("Send not found");
     token = issued.token;
   }
   return jsonResponse({

@@ -6,6 +6,7 @@ import { db } from "@/db";
 import type { sends } from "@/db/schema";
 import { sendFiles, sends as sendsTable } from "@/db/schema";
 import { commitUserMutation } from "@/lib/server/mutations/commit";
+import { ApiError, apiErrorResponse } from "@/lib/server/http/errors";
 import { hashSecret, verifySecret } from "@/lib/server/auth/secret-hash";
 
 export const SEND_FILE_UPLOAD_TTL_MS = 15 * 60 * 1000;
@@ -255,12 +256,19 @@ export function sendUnavailableReason(send: typeof sends.$inferSelect, now = new
   return null;
 }
 
+export function sendUnavailableResponse(reason?: ReturnType<typeof sendUnavailableReason>) {
+  return reason === "exhausted"
+    ? apiErrorResponse(new ApiError(404, "send_access_limit_reached", "This Send has reached its access limit."))
+    : apiErrorResponse(new ApiError(404, "send_unavailable", "Send not found or no longer available."));
+}
+
 // Verify availability + password WITHOUT consuming an access. Used by the public
 // /access endpoint for FILE Sends, whose access is spent at download time (not on
 // page open), and to read the Send type before deciding whether to consume.
 export async function peekSendAccess(sendUuid: string, password: string | undefined, now = new Date()) {
   const [send] = await db.select().from(sendsTable).where(eq(sendsTable.uuid, sendUuid)).limit(1);
-  if (!send || sendUnavailableReason(send, now)) return { status: "unavailable" as const };
+  const reason = send ? sendUnavailableReason(send, now) : null;
+  if (!send || reason) return { status: "unavailable" as const, reason };
   if (send.password) {
     if (!password || !await verifyLegacyPassword(password, send.password)) return { status: "invalid_password" as const };
   }
@@ -278,7 +286,8 @@ export async function consumeSendAccess(
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const [send] = await tx.select().from(sendsTable).where(eq(sendsTable.uuid, sendUuid)).limit(1);
-    if (!send || sendUnavailableReason(send, now)) return { status: "unavailable" as const };
+    const reason = send ? sendUnavailableReason(send, now) : null;
+    if (!send || reason) return { status: "unavailable" as const, reason };
     if (send.password) {
       if (!password || !await verifyLegacyPassword(password, send.password)) return { status: "invalid_password" as const };
     }
@@ -289,5 +298,5 @@ export async function consumeSendAccess(
     }
     return { status: "ok" as const, send: updated[0]! };
   }
-  return { status: "unavailable" as const };
+  return { status: "unavailable" as const, reason: null };
 }

@@ -73,6 +73,7 @@ export default function SendsPage() {
   const [maxAccessCount, setMaxAccessCount] = useState("");
   const accessLimit = maxAccessCount === "" ? null : Number(maxAccessCount);
   const validAccessLimit = accessLimit === null || (Number.isSafeInteger(accessLimit) && accessLimit > 0);
+  const accessLimitReached = validAccessLimit && accessLimit !== null && editing !== null && editing.accessCount >= accessLimit;
   const [disabled, setDisabled] = useState(false);
   const [hideEmail, setHideEmail] = useState(false);
   const [deletionDate, setDeletionDate] = useState("");
@@ -317,7 +318,11 @@ export default function SendsPage() {
                 value={maxAccessCount}
                 onChange={(event) => setMaxAccessCount(event.target.value)}
                 error={!validAccessLimit}
-                helperText={!validAccessLimit ? "请输入大于 0 的整数。" : "留空表示不限次数。文本按查看计次，文件按下载授权计次。"}
+                helperText={!validAccessLimit
+                  ? "请输入大于 0 的整数。"
+                  : accessLimitReached
+                    ? `这条分享已访问 ${editing.accessCount} 次。按当前上限保存后，收件人无法打开。`
+                    : "留空表示不限次数。文本按查看计次，文件按下载授权计次。"}
               />
               <TextField
                 label="删除时间"

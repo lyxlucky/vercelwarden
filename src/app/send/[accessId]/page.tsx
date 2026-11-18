@@ -65,6 +65,7 @@ export default function PublicSendPage() {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordRequired, setPasswordRequired] = useState(false);
+  const [textPreview, setTextPreview] = useState(false);
   const [result, setResult] = useState<PublicSend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -82,14 +83,16 @@ export default function PublicSendPage() {
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
   }, []);
 
-  const open = useCallback(async (attemptPassword?: string) => {
+  const open = useCallback(async (attemptPassword?: string, preview = false) => {
     setBusy(true);
     setError(null);
+    setTextPreview(false);
     setProgress(null);
     downloadAttempt.current = {};
     try {
-      const send = await accessPublicSend(params.accessId, window.location.hash.slice(1), attemptPassword);
-      setResult(send);
+      const send = await accessPublicSend(params.accessId, window.location.hash.slice(1), attemptPassword, preview);
+      if (send.type === "text-preview") setTextPreview(true);
+      else setResult(send);
       setPasswordRequired(false);
     } catch (nextError) {
       if (nextError instanceof PublicSendAccessError && (nextError.code === "password_required" || nextError.code === "invalid_password")) {
@@ -97,6 +100,7 @@ export default function PublicSendPage() {
         setError(nextError.code === "invalid_password" ? nextError.message : null);
         return;
       }
+      setPasswordRequired(false);
       setError(nextError instanceof Error ? nextError.message : "无法打开分享。");
     } finally {
       setBusy(false);
@@ -107,7 +111,7 @@ export default function PublicSendPage() {
     const attemptKey = `${params.accessId}:${window.location.hash}`;
     if (automaticAttempt.current === attemptKey) return;
     automaticAttempt.current = attemptKey;
-    void open();
+    void open(undefined, true);
   }, [open, params.accessId]);
 
   const download = async (send: Extract<PublicSend, { type: "file" }>) => {
@@ -218,7 +222,15 @@ export default function PublicSendPage() {
                 </Box>
               ) : null}
 
-              {!result && !busy && !passwordRequired ? (
+              {!result && !busy && textPreview ? (
+                <Stack spacing={2} sx={{ alignItems: "flex-start" }}>
+                  <Typography component="h1" variant="h1">打开文本分享</Typography>
+                  <Typography color="text.secondary">打开内容会计入一次访问。</Typography>
+                  <Button variant="contained" startIcon={<LockOutlined />} onClick={() => void open()}>打开分享</Button>
+                </Stack>
+              ) : null}
+
+              {!result && !busy && !passwordRequired && !textPreview ? (
                 <Stack spacing={3} sx={{ alignItems: "flex-start", py: { xs: 2, sm: 3 } }}>
                   <Box sx={{ width: 56, height: 56, display: "grid", placeItems: "center", borderRadius: 3, color: "error.main", bgcolor: (theme) => alpha(theme.palette.error.main, 0.1) }}>
                     <LockOutlined sx={{ fontSize: 28 }} aria-hidden="true" />
@@ -227,7 +239,7 @@ export default function PublicSendPage() {
                     <Typography component="h1" variant="h1">无法打开此分享</Typography>
                     <Typography color="text.secondary" sx={{ mt: 1 }}>{error ?? "分享链接暂时不可用。"}</Typography>
                   </Box>
-                  <Button variant="outlined" startIcon={<RefreshOutlined />} onClick={() => void open()} sx={{ cursor: "pointer" }}>重试</Button>
+                  <Button variant="outlined" startIcon={<RefreshOutlined />} onClick={() => void open(undefined, true)} sx={{ cursor: "pointer" }}>重试</Button>
                 </Stack>
               ) : null}
 

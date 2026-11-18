@@ -320,7 +320,9 @@ export type PublicSend =
   | { type: "text"; name: string; text: string }
   | { type: "file"; name: string; file: { id: string; fileName: string; size: number; checksum: string | null; encoding: "binary" | "legacy" }; sendKey: Uint8Array };
 
-export type PublicSendAccessErrorCode = "password_required" | "invalid_password" | "unavailable";
+export type PublicSendAccessErrorCode = "password_required" | "invalid_password" | "unavailable" | "access_limit_reached";
+
+const accessLimitMessage = "此分享已达到访问次数上限。请联系发送者提高上限或重新分享。";
 
 export class PublicSendAccessError extends Error {
   constructor(public readonly code: PublicSendAccessErrorCode, message: string) {
@@ -329,7 +331,7 @@ export class PublicSendAccessError extends Error {
   }
 }
 
-export async function accessPublicSend(accessId: string, fragment: string, password?: string): Promise<PublicSend> {
+export async function accessPublicSend(accessId: string, fragment: string, password?: string, preview = false): Promise<PublicSend | { type: "text-preview" }> {
   const sendKeyMaterial = fromBase64url(fragment);
   if (sendKeyMaterial.length === 0) throw new Error("分享链接缺少有效解密密钥。");
   let contentKey: Uint8Array | undefined;
@@ -339,7 +341,7 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
     const response = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: password || undefined }),
+      body: JSON.stringify({ password: password || undefined, preview: preview || undefined }),
       cache: "no-store",
     });
     if (!response.ok) {
@@ -349,9 +351,15 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
           password ? "访问密码不正确，请重试。" : "此分享受密码保护。"
         );
       }
-      throw new PublicSendAccessError("unavailable", "分享已过期、停用或达到访问次数上限。");
+      if (response.status !== 404) throw new Error("暂时无法打开分享，请稍后重试。");
+      const error = await response.json().catch(() => null);
+      if (error?.code === "send_access_limit_reached") {
+        throw new PublicSendAccessError("access_limit_reached", accessLimitMessage);
+      }
+      throw new PublicSendAccessError("unavailable", "分享不存在、已过期或已停用。");
     }
-    const send = await response.json() as { type: number; name: string; text?: { text?: string }; file?: WireSendFile };
+    const send = await response.json() as { object?: string; type: number; name: string; text?: { text?: string }; file?: WireSendFile };
+    if (send.object === "send-text-preview") return { type: "text-preview" };
     const name = await decryptTextWithUserKey(send.name, contentKey);
     if (send.type === 0) {
       const text = send.text?.text ? await decryptTextWithUserKey(send.text.text, contentKey) : "";
@@ -404,7 +412,13 @@ export async function downloadPublicSendFile(
         cache: "no-store",
       });
       if (authorization.status === 401) throw new Error("访问密码不正确。");
-      if (authorization.status === 404) throw new Error("文件不可用，或分享已过期、停用或达到访问次数上限。");
+      if (authorization.status === 404) {
+        const error = await authorization.json().catch(() => null);
+        if (error?.code === "send_access_limit_reached") {
+          throw new PublicSendAccessError("access_limit_reached", accessLimitMessage);
+        }
+        throw new Error("附件不可用，或分享已过期或停用。");
+      }
       if (!authorization.ok) throw new Error("暂时无法获取下载授权，请重试。");
       attempt.authorization = await authorization.json() as NonNullable<SendDownloadAttempt["authorization"]>;
     }
