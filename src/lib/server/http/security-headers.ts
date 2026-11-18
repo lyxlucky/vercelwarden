@@ -7,10 +7,9 @@ export function securityHeaders(environment: string | undefined = process.env.NO
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
-      // Browser→Vercel Blob multipart uploads (client-direct Send file upload)
-      // target *.blob.vercel-storage.com; the handleUpload token fetch and all
-      // downloads stay same-origin.
-      "connect-src 'self' https://blob.vercel-storage.com https://*.blob.vercel-storage.com",
+      // The Blob SDK sends upload requests to vercel.com/api/blob/ and serves
+      // blob objects from blob.vercel-storage.com.
+      "connect-src 'self' https://vercel.com/api/blob/ https://blob.vercel-storage.com https://*.blob.vercel-storage.com",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
