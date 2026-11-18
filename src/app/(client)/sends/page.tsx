@@ -8,6 +8,7 @@ import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import DeleteOutlineOutlined from "@mui/icons-material/DeleteOutlineOutlined";
 import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
 import EditOutlined from "@mui/icons-material/EditOutlined";
+import RefreshOutlined from "@mui/icons-material/RefreshOutlined";
 import SendOutlined from "@mui/icons-material/SendOutlined";
 import {
   Box,
@@ -75,6 +76,8 @@ export default function SendsPage() {
   const [removePassword, setRemovePassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [progress, setProgress] = useState<SendTransferProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,21 +85,28 @@ export default function SendsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const selectedItems = useMemo(() => items.filter((item) => selected.has(item.id)), [items, selected]);
 
-  const refresh = async () => {
+  const refresh = () => {
+    setLoadError(null);
     setLoading(true);
-    try {
-      setItems(await listSends());
-      setError(null);
-    } finally {
-      setLoading(false);
-    }
+    setLoadAttempt((current) => current + 1);
   };
 
   useEffect(() => {
     let active = true;
-    void listSends().then((next) => { if (active) setItems(next); }).catch((next) => { if (active) setError(next instanceof Error ? next.message : "无法加载 Send。"); }).finally(() => { if (active) setLoading(false); });
+    void listSends()
+      .then((next) => {
+        if (!active) return;
+        setItems(next);
+        setSelected((current) => new Set(next.filter((item) => current.has(item.id)).map((item) => item.id)));
+      })
+      .catch((reason: unknown) => {
+        if (active) setLoadError(reason instanceof Error && reason.message ? reason.message : "请稍后重试。");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => { active = false; };
-  }, []);
+  }, [loadAttempt]);
 
   const reset = () => {
     setEditing(null);
@@ -218,14 +228,24 @@ export default function SendsPage() {
         description="创建端到端加密的文本或文件分享，并限制密码、次数和有效期。"
         actions={(
           <>
-            {selectedItems.length > 0 ? <Button color="error" startIcon={<DeleteOutlineOutlined />} disabled={busy} onClick={() => setDeleteIds(selectedItems.map((item) => item.id))}>删除所选（{selectedItems.length}）</Button> : null}
-            <Button variant="contained" startIcon={<AddOutlined />} onClick={() => { reset(); setOpen(true); }}>新建 Send</Button>
+            {selectedItems.length > 0 ? <Button color="error" startIcon={<DeleteOutlineOutlined />} disabled={busy || loading} onClick={() => setDeleteIds(selectedItems.map((item) => item.id))}>删除所选（{selectedItems.length}）</Button> : null}
+            <Button startIcon={<RefreshOutlined />} disabled={loading || busy || Boolean(loadError)} onClick={refresh}>刷新列表</Button>
+            <Button variant="contained" startIcon={<AddOutlined />} disabled={loading} onClick={() => { reset(); setOpen(true); }}>新建 Send</Button>
           </>
         )}
-        feedback={error ? <AsyncState kind="fatal" title="Send 操作失败" description={error} actionLabel="重新加载" onAction={() => void refresh()} /> : partial ? <AsyncState kind="partial" description={partial} /> : undefined}
+        feedback={error ? <AsyncState kind="fatal" title="Send 操作失败" description={error} /> : partial ? <AsyncState kind="partial" description={partial} /> : undefined}
       >
-        {loading ? <AsyncState kind="loading" description="正在加载安全分享。" /> : null}
-        {!loading && items.length === 0 ? <AsyncState kind="empty" title="暂无 Send" description="创建一个端到端加密的文本或文件分享。" actionLabel="新建 Send" onAction={() => setOpen(true)} /> : null}
+        {loading ? <AsyncState kind="loading" title={loadAttempt === 0 ? "正在加载 Send 列表" : "正在刷新 Send 列表"} /> : null}
+        {loadError ? (
+          <AsyncState
+            kind={items.length ? "partial" : "fatal"}
+            title={items.length ? "无法刷新 Send 列表，仍显示上次加载的内容" : "无法加载 Send 列表"}
+            description={loadError}
+            actionLabel={busy ? undefined : "重试"}
+            onAction={refresh}
+          />
+        ) : null}
+        {!loading && !loadError && items.length === 0 ? <AsyncState kind="empty" title="暂无 Send" description="创建一个端到端加密的文本或文件分享。" /> : null}
         <Stack spacing={1.5}>
           {items.map((item) => (
             <Card component="article" variant="outlined" key={item.id}>
@@ -242,8 +262,8 @@ export default function SendsPage() {
                 </Box>
                 <Stack direction="row" sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, justifyContent: { xs: "flex-end", sm: "initial" } }}>
                   <Tooltip title="复制分享链接"><IconButton aria-label="复制分享链接" onClick={() => void copyLink(item)}>{copied === item.id ? <CheckOutlined color="success" /> : <ContentCopyOutlined />}</IconButton></Tooltip>
-                  <Tooltip title={`编辑 ${item.name}`}><IconButton aria-label={`编辑 ${item.name}`} onClick={() => edit(item)}><EditOutlined /></IconButton></Tooltip>
-                  <Tooltip title={`删除 ${item.name}`}><IconButton aria-label={`删除 ${item.name}`} color="error" onClick={() => setDeleteIds([item.id])}><DeleteOutlineOutlined /></IconButton></Tooltip>
+                  <Tooltip title={`编辑 ${item.name}`}><span><IconButton aria-label={`编辑 ${item.name}`} disabled={loading} onClick={() => edit(item)}><EditOutlined /></IconButton></span></Tooltip>
+                  <Tooltip title={`删除 ${item.name}`}><span><IconButton aria-label={`删除 ${item.name}`} disabled={loading} color="error" onClick={() => setDeleteIds([item.id])}><DeleteOutlineOutlined /></IconButton></span></Tooltip>
                 </Stack>
               </CardContent>
             </Card>
