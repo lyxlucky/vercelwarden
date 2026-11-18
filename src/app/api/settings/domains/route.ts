@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { domainSettings, users } from "@/db/schema";
 import { GLOBAL_EQUIVALENT_DOMAINS } from "@/features/domains/global-domains";
-import { normalizeDomainSettings } from "@/features/domains/domain-rules";
+import { DomainValidationError, normalizeDomainSettings } from "@/features/domains/domain-rules";
 import { readStoredDomainSettings } from "@/features/domains/store";
 import { buildCapabilityDocument } from "@/lib/contracts/capabilities";
 import { authenticateRequest } from "@/lib/server/authorization/authorize";
@@ -87,6 +87,9 @@ export async function PUT(request: Request) {
     });
     return Response.json(responseBody(normalized), { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
+    if (error instanceof DomainValidationError) {
+      return apiErrorResponse(new ApiError(400, "validation_error", error.message));
+    }
     return apiErrorResponse(error);
   }
 }

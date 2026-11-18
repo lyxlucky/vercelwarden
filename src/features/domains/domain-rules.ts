@@ -10,8 +10,10 @@ export interface DomainSettingsInput {
   excludedGlobalDomainIds: number[];
 }
 
+export class DomainValidationError extends Error {}
+
 function domainError(message: string): never {
-  throw new Error(message);
+  throw new DomainValidationError(message);
 }
 
 export function normalizeDomainName(input: string): string {
