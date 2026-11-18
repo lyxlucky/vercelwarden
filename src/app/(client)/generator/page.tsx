@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CheckOutlined from "@mui/icons-material/CheckOutlined";
 import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import RefreshOutlined from "@mui/icons-material/RefreshOutlined";
@@ -59,14 +59,28 @@ function generatorErrorMessage(error: unknown) {
   return messages[error.message] ?? "无法按当前选项生成，请检查设置。";
 }
 
+function isIntegerInRange(value: string, min: number, max: number) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max;
+}
+
 export default function GeneratorPage() {
   const [mode, setMode] = useState<"password" | "passphrase">("password");
   const [passwordOptions, setPasswordOptions] = useState(defaultPasswordOptions);
   const [passphraseOptions, setPassphraseOptions] = useState(defaultPassphraseOptions);
+  const [lengthInput, setLengthInput] = useState(String(defaultPasswordOptions.length));
+  const [wordsInput, setWordsInput] = useState(String(defaultPassphraseOptions.words));
+  const [lengthTouched, setLengthTouched] = useState(false);
+  const [wordsTouched, setWordsTouched] = useState(false);
   const [seed, setSeed] = useState(0);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [generated, setGenerated] = useState("");
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const copyAttempt = useRef(0);
+  const copyTimeout = useRef<number | undefined>(undefined);
+  const validLength = isIntegerInRange(lengthInput, 5, 256);
+  const validWords = isIntegerInRange(wordsInput, 3, 20);
+  const validInput = mode === "password" ? validLength : validWords;
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +89,17 @@ export default function GeneratorPage() {
       if (cancelled) return;
 
       void seed;
+      setCopyState("idle");
+      setGenerationError(null);
+      if (!validInput) {
+        setGenerated("");
+        return;
+      }
+
       try {
-        setGenerated(mode === "password" ? generatePassword(passwordOptions) : generatePassphrase(passphraseOptions));
-        setGenerationError(null);
+        setGenerated(mode === "password"
+          ? generatePassword({ ...passwordOptions, length: Number(lengthInput) })
+          : generatePassphrase({ ...passphraseOptions, words: Number(wordsInput) }));
       } catch (error) {
         setGenerated("");
         setGenerationError(generatorErrorMessage(error));
@@ -86,23 +108,28 @@ export default function GeneratorPage() {
 
     return () => {
       cancelled = true;
+      copyAttempt.current += 1;
+      window.clearTimeout(copyTimeout.current);
     };
-  }, [mode, passphraseOptions, passwordOptions, seed]);
-  const strength = generated
+  }, [lengthInput, mode, passphraseOptions, passwordOptions, seed, validInput, wordsInput]);
+  const strength = validInput && generated
     ? mode === "password"
       ? passwordStrength(generated)
-      : passphraseStrength(passphraseOptions)
+      : passphraseStrength({ ...passphraseOptions, words: Number(wordsInput) })
     : null;
 
   const copy = async () => {
-    if (!generated) return;
+    if (!validInput || !generated) return;
+    const attempt = ++copyAttempt.current;
+    window.clearTimeout(copyTimeout.current);
 
     try {
       await navigator.clipboard.writeText(generated);
+      if (attempt !== copyAttempt.current) return;
       setCopyState("copied");
-      window.setTimeout(() => setCopyState("idle"), 1800);
+      copyTimeout.current = window.setTimeout(() => setCopyState("idle"), 1800);
     } catch {
-      setCopyState("error");
+      if (attempt === copyAttempt.current) setCopyState("error");
     }
   };
 
@@ -112,11 +139,7 @@ export default function GeneratorPage() {
         title="密码生成器"
         description="全部生成过程仅在当前设备内完成，不会自动保存。"
         actions={<Chip icon={<ShieldOutlined />} label="仅本地生成" color="success" variant="outlined" />}
-        feedback={generationError
-          ? <Alert severity="warning">{generationError}</Alert>
-          : copyState === "error"
-            ? <Alert severity="error">浏览器拒绝了剪贴板权限，请手动选择并复制结果。</Alert>
-            : undefined}
+        feedback={generationError ? <Alert severity="warning">{generationError}</Alert> : undefined}
       >
         <SectionCard
           title="生成结果"
@@ -137,14 +160,15 @@ export default function GeneratorPage() {
                 userSelect: "all",
               }}
             >
-              {generated || "等待生成…"}
+              {validInput && generated ? generated : "等待生成…"}
             </Box>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <Button startIcon={<RefreshOutlined />} onClick={() => setSeed((value) => value + 1)}>重新生成</Button>
-              <Button disabled={!generated} variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
+              <Button disabled={!validInput} startIcon={<RefreshOutlined />} onClick={() => setSeed((value) => value + 1)}>重新生成</Button>
+              <Button disabled={!validInput || !generated} variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
                 {copyState === "copied" ? "已复制" : "复制"}
               </Button>
             </Stack>
+            {copyState === "error" ? <Alert severity="error">无法访问剪贴板，请手动选择并复制结果。</Alert> : null}
           </Stack>
         </SectionCard>
 
@@ -156,7 +180,16 @@ export default function GeneratorPage() {
           <Box role="tabpanel" aria-label={mode === "password" ? "密码选项" : "密码短语选项"} sx={{ pt: 3 }}>
             {mode === "password" ? (
               <Stack spacing={2.5}>
-                <TextField label="长度" type="number" slotProps={{ htmlInput: { min: 5, max: 256 } }} value={passwordOptions.length} onChange={(event) => setPasswordOptions({ ...passwordOptions, length: Math.min(256, Math.max(5, Number(event.target.value) || 5)) })} />
+                <TextField
+                  label="长度"
+                  type="number"
+                  slotProps={{ htmlInput: { min: 5, max: 256 } }}
+                  value={lengthInput}
+                  onChange={(event) => { setLengthInput(event.target.value); setLengthTouched(false); }}
+                  onBlur={() => setLengthTouched(true)}
+                  error={lengthTouched && !validLength}
+                  helperText="请输入 5 到 256 之间的整数。"
+                />
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1 }}>
                   {passwordFlags.map(([key, label]) => (
                     <FormControlLabel key={key} control={<Checkbox checked={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: event.target.checked })} />} label={label} />
@@ -166,13 +199,22 @@ export default function GeneratorPage() {
                 <Typography variant="subtitle2">最低字符数量</Typography>
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 2 }}>
                   {minimumFields.map(([key, label]) => (
-                    <TextField key={key} label={label} type="number" slotProps={{ htmlInput: { min: 0, max: passwordOptions.length } }} value={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: Number(event.target.value) })} />
+                    <TextField key={key} label={label} type="number" slotProps={{ htmlInput: { min: 0, max: validLength ? Number(lengthInput) : undefined } }} value={passwordOptions[key]} onChange={(event) => setPasswordOptions({ ...passwordOptions, [key]: Number(event.target.value) })} />
                   ))}
                 </Box>
               </Stack>
             ) : (
               <Stack spacing={2.5}>
-                <TextField label="单词数量" type="number" slotProps={{ htmlInput: { min: 3, max: 20 } }} value={passphraseOptions.words} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, words: Math.min(20, Math.max(3, Number(event.target.value) || 3)) })} />
+                <TextField
+                  label="单词数量"
+                  type="number"
+                  slotProps={{ htmlInput: { min: 3, max: 20 } }}
+                  value={wordsInput}
+                  onChange={(event) => { setWordsInput(event.target.value); setWordsTouched(false); }}
+                  onBlur={() => setWordsTouched(true)}
+                  error={wordsTouched && !validWords}
+                  helperText="请输入 3 到 20 之间的整数。"
+                />
                 <TextField label="分隔符" slotProps={{ htmlInput: { maxLength: 1 } }} value={passphraseOptions.separator} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, separator: event.target.value })} />
                 <FormControlLabel control={<Checkbox checked={passphraseOptions.capitalize} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, capitalize: event.target.checked })} />} label="单词首字母大写" />
                 <FormControlLabel control={<Checkbox checked={passphraseOptions.includeNumber} onChange={(event) => setPassphraseOptions({ ...passphraseOptions, includeNumber: event.target.checked })} />} label="包含数字" />
