@@ -268,8 +268,12 @@ export async function encryptBytesToBinary(plaintext: Uint8Array, userKey: Uint8
     const encryptionKey = await crypto.subtle.importKey("raw", encryptionBytes, "AES-CBC", false, ["encrypt"]);
     const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv }, encryptionKey, owned(plaintext)));
     const signingKey = await crypto.subtle.importKey("raw", macBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", signingKey, concatenate(iv, ciphertext)));
-    return concatenate(concatenate(iv, ciphertext), mac);
+    const macOffset = iv.length + ciphertext.length;
+    const payload = new Uint8Array(macOffset + 32);
+    payload.set(iv);
+    payload.set(ciphertext, iv.length);
+    payload.set(new Uint8Array(await crypto.subtle.sign("HMAC", signingKey, payload.subarray(0, macOffset))), macOffset);
+    return payload;
   } finally {
     wipeBytes(encryptionBytes);
     wipeBytes(macBytes);

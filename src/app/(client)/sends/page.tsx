@@ -148,6 +148,7 @@ export default function SendsPage() {
     setError(null);
     setFormError(null);
     setPartial(null);
+    setProgress(null);
     try {
       if (Number.isNaN(Date.parse(deletionDate)) || new Date(deletionDate).getTime() <= Date.now()) {
         setFormError("请选择一个未来的删除时间。");
@@ -177,6 +178,7 @@ export default function SendsPage() {
       setOpen(false);
       reset();
     } catch (nextError) {
+      setProgress(null);
       setFormError(nextError instanceof Error ? nextError.message : "Send 操作失败。");
     } finally {
       setBusy(false);
@@ -220,7 +222,9 @@ export default function SendsPage() {
   };
   const progressLabel: Record<SendTransferProgress["phase"], string> = {
     encrypting: "正在加密",
+    preparing: "正在准备上传",
     uploading: "正在上传",
+    confirming: "正在确认附件",
     downloading: "正在下载",
     decrypting: "正在解密",
     complete: "已完成",
@@ -261,7 +265,7 @@ export default function SendsPage() {
                     <Typography component="h2" variant="subtitle1" noWrap sx={{ fontWeight: 700 }}>{item.name}</Typography>
                   </Stack>
                   <Typography color="text.secondary" variant="body2">
-                    {item.file?.fileName ?? "文本"} · 访问 {item.accessCount}{item.maxAccessCount == null ? "" : ` / ${item.maxAccessCount}`} · {item.disabled ? "已停用" : `删除 ${new Date(item.deletionDate).toLocaleString("zh-CN")}`}
+                    {item.file?.fileName ?? "文本"} · 访问 {item.accessCount}{item.maxAccessCount == null ? "" : ` / ${item.maxAccessCount}`}{item.passwordProtected ? " · 密码保护" : ""} · {item.disabled ? "已停用" : `删除 ${new Date(item.deletionDate).toLocaleString("zh-CN")}`}
                   </Typography>
                 </Box>
                 <ActionGroup sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, justifyContent: "flex-end" }}>
@@ -299,11 +303,11 @@ export default function SendsPage() {
               <TextField label="名称" value={name} onChange={(event) => setName(event.target.value)} />
               <TextField label="备注" value={notes} onChange={(event) => setNotes(event.target.value)} />
               {!editing ? (
-                <TextField label="访问密码（可选）" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                <TextField label="访问密码（可选）" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
               ) : (
                 <Stack spacing={1}>
-                  <TextField label="新访问密码（留空保持不变）" type="password" value={password} disabled={removePassword} onChange={(event) => setPassword(event.target.value)} />
-                  <FormControlLabel control={<Checkbox checked={removePassword} onChange={(event) => { setRemovePassword(event.target.checked); if (event.target.checked) setPassword(""); }} />} label="移除访问密码" />
+                  <TextField label={editing.passwordProtected ? "新访问密码（留空保持不变）" : "设置访问密码（可选）"} type="password" autoComplete="new-password" value={password} disabled={removePassword} onChange={(event) => setPassword(event.target.value)} />
+                  {editing.passwordProtected ? <FormControlLabel control={<Checkbox checked={removePassword} onChange={(event) => { setRemovePassword(event.target.checked); if (event.target.checked) setPassword(""); }} />} label="移除访问密码" /> : null}
                 </Stack>
               )}
               <TextField
@@ -353,7 +357,12 @@ export default function SendsPage() {
               <FormControlLabel control={<Checkbox checked={disabled} onChange={(event) => setDisabled(event.target.checked)} />} label="暂停访问" />
               <FormControlLabel control={<Checkbox checked={hideEmail} onChange={(event) => setHideEmail(event.target.checked)} />} label="隐藏创建者邮箱" />
               {formError ? <Alert severity="error" role="alert">{formError}</Alert> : null}
-              {progress ? <Box aria-live="polite"><Typography variant="body2">{progressLabel[progress.phase]}：{progress.percent}%</Typography><LinearProgress variant="determinate" value={progress.percent} /></Box> : null}
+              {progress ? (
+                <Box>
+                  <Typography variant="body2" role="status">{progressLabel[progress.phase]}{progress.phase === "uploading" ? `：${progress.percent}%` : ""}</Typography>
+                  <LinearProgress aria-label={progressLabel[progress.phase]} variant={progress.phase === "uploading" ? "determinate" : "indeterminate"} value={progress.percent} />
+                </Box>
+              ) : null}
             </Stack>
           </DialogContent>
           <DialogActions>

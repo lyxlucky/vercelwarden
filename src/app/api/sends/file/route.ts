@@ -7,7 +7,6 @@ import { verifyAuth, newUuid } from "@/lib/auth";
 import { errorResponse, unauthorized } from "@/lib/responses";
 import { serializeSend } from "@/lib/send";
 import {
-  cleanupExpiredPendingSendFiles,
   confirmSendFileUpload,
   hashSendPassword,
   issueSendFileUploadCredential,
@@ -158,7 +157,6 @@ export async function POST(request: NextRequest) {
     return legacyMultipart(request, auth.user.uuid, auth.device.identifier);
   }
   if (!contentType.startsWith("application/json")) return errorResponse("Expected JSON metadata or multipart upload", 415);
-  await cleanupExpiredPendingSendFiles();
   const model = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!model) return errorResponse("Invalid JSON body");
   const fileMeta = (model.file ?? model.File ?? {}) as Record<string, unknown>;
@@ -167,6 +165,7 @@ export async function POST(request: NextRequest) {
     metadata = validateSendFileMetadata({
       fileName: fileMeta.fileName ?? fileMeta.FileName,
       fileSize: fileMeta.size ?? fileMeta.Size,
+      plaintextSize: fileMeta.plaintextSize ?? fileMeta.PlaintextSize,
       checksum: fileMeta.checksum ?? fileMeta.Checksum,
       key: fileMeta.key ?? fileMeta.Key,
     });

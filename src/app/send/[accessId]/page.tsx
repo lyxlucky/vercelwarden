@@ -44,7 +44,9 @@ import { wipeBytes } from "@/lib/client/crypto/auth";
 
 const progressLabels: Record<SendTransferProgress["phase"], string> = {
   encrypting: "正在加密",
+  preparing: "正在准备上传",
   uploading: "正在上传",
+  confirming: "正在确认附件",
   downloading: "正在下载",
   decrypting: "正在本地解密",
   complete: "已完成",

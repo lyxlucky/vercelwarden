@@ -36,6 +36,7 @@ interface WireSend {
   maxAccessCount: number | null;
   accessCount: number;
   authType: number;
+  password?: string | null;
   disabled: boolean;
   hideEmail: boolean;
   revisionDate: string;
@@ -54,6 +55,7 @@ export interface SendView {
   url: string;
   accessCount: number;
   maxAccessCount: number | null;
+  passwordProtected: boolean;
   disabled: boolean;
   hideEmail: boolean;
   expirationDate: string | null;
@@ -61,7 +63,7 @@ export interface SendView {
 }
 
 export interface SendTransferProgress {
-  phase: "encrypting" | "uploading" | "downloading" | "decrypting" | "complete";
+  phase: "encrypting" | "preparing" | "uploading" | "confirming" | "downloading" | "decrypting" | "complete";
   loaded: number;
   total: number;
   percent: number;
@@ -108,6 +110,7 @@ async function decryptSend(send: WireSend, vaultKey: Uint8Array): Promise<SendVi
       url: `${window.location.origin}/send/${encodeURIComponent(send.accessId)}#${base64url(sendKeyMaterial)}`,
       accessCount: send.accessCount,
       maxAccessCount: send.maxAccessCount,
+      passwordProtected: send.authType === 1 || Boolean(send.password),
       disabled: send.disabled,
       hideEmail: send.hideEmail,
       expirationDate: send.expirationDate,
@@ -179,24 +182,30 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
   const sendKeyMaterial = crypto.getRandomValues(new Uint8Array(16));
   let contentKey: Uint8Array | undefined;
   let binary: Uint8Array<ArrayBuffer> | undefined;
+  let plaintext: Uint8Array | undefined;
   let pendingSendId: string | undefined;
-  let confirmed = false;
+  let uploaded = false;
+  let stage = "本地加密";
   try {
-    contentKey = await deriveSendContentKey(sendKeyMaterial);
     report(onProgress, "encrypting", 0, input.file.size);
-    const plaintext = new Uint8Array(await input.file.arrayBuffer());
+    contentKey = await deriveSendContentKey(sendKeyMaterial);
+    plaintext = new Uint8Array(await input.file.arrayBuffer());
     binary = await encryptBytesToBinary(plaintext, contentKey);
-    plaintext.fill(0);
+    wipeBytes(plaintext);
+    plaintext = undefined;
     const encryptedName = await encryptWithUserKey(new TextEncoder().encode(input.file.name), contentKey);
     const checksum = await sha256Hex(binary);
-    report(onProgress, "encrypting", input.file.size, input.file.size);
+    const model = await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey);
+    stage = "准备上传";
+    report(onProgress, "preparing", 0, 0);
     // 1. Reserve a pending Send + file row and get the pinned upload path/token.
     const pending = await apiClient<{ send: WireSend; sendId: string; fileId: string; pathname: string; uploadToken: string }>("/api/sends/file", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: {
         type: 1,
-        ...await encryptedEnvelope(input, sendKeyMaterial, contentKey, vaultKey),
+        ...model,
         file: { fileName: encryptedName, size: binary.byteLength, plaintextSize: input.file.size, checksum, key: null },
       },
     });
@@ -204,28 +213,44 @@ export async function createFileSend(input: CreateSendInput & { file: File }, on
     // 2. Upload the encrypted bytes straight to Blob storage, bypassing the
     //    ~4.5MB serverless body limit; the token route authorizes this path.
     const token = sessionStore.getAccessToken();
-    await upload(pending.pathname, new Blob([binary]), {
+    stage = "上传附件";
+    report(onProgress, "uploading", 0, binary.byteLength);
+    const encryptedFile = new Blob([binary], { type: "application/octet-stream" });
+    wipeBytes(binary);
+    binary = undefined;
+    await upload(pending.pathname, encryptedFile, {
       access: "private",
       handleUploadUrl: "/api/sends/file/upload-token",
       multipart: true,
+      abortSignal: AbortSignal.timeout(10 * 60_000),
       contentType: "application/octet-stream",
       clientPayload: JSON.stringify({ sendId: pending.sendId, fileId: pending.fileId, uploadToken: pending.uploadToken }),
       ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
       onUploadProgress: (event) => report(onProgress, "uploading", event.loaded, event.total),
     });
+    uploaded = true;
     // 3. Confirm — the server head()s the blob and flips the row to complete.
-    const confirm = await apiClient<{ send: WireSend }>("/api/sends/file", { method: "PUT", body: { sendId: pending.sendId, fileId: pending.fileId } });
-    confirmed = true;
+    stage = "确认上传";
+    report(onProgress, "confirming", 0, 0);
+    const confirm = await apiClient<{ send: WireSend }>("/api/sends/file", {
+      method: "PUT",
+      signal: AbortSignal.timeout(30_000),
+      body: { sendId: pending.sendId, fileId: pending.fileId },
+    });
     report(onProgress, "complete", input.file.size, input.file.size);
     return await decryptSend(confirm.send, vaultKey);
   } catch (error) {
-    // Roll back ONLY before the upload is confirmed. Once confirmed the Send is
-    // fully created — a later failure must never delete it.
-    if (pendingSendId && !confirmed) {
-      await apiClient(`/api/sends/${encodeURIComponent(pendingSendId)}`, { method: "DELETE" }).catch(() => undefined);
+    // A lost confirmation response can still mean the upload was committed.
+    if (pendingSendId && !uploaded) {
+      await apiClient(`/api/sends/${encodeURIComponent(pendingSendId)}`, {
+        method: "DELETE",
+        signal: AbortSignal.timeout(8_000),
+      }).catch(() => undefined);
     }
-    throw error;
+    const detail = error instanceof Error ? error.message : "请重试。";
+    throw new Error(`${stage}失败：${detail}`, { cause: error });
   } finally {
+    wipeBytes(plaintext);
     wipeBytes(binary);
     wipeBytes(contentKey);
     wipeBytes(sendKeyMaterial);
@@ -394,8 +419,13 @@ export async function downloadPublicSendFile(
     if (metadata.checksum && await sha256Hex(encryptedBytes) !== metadata.checksum) throw new Error("文件完整性校验失败。");
     report(onProgress, "downloading", send.file.size, send.file.size);
     report(onProgress, "decrypting", 0, send.file.size);
-    plaintext = send.file.encoding === "legacy"
-      ? await decryptWithUserKey(new TextDecoder().decode(encryptedBytes), send.sendKey)
+    // Some earlier binary uploads have no plaintextSize marker.
+    const legacyCipherString = send.file.encoding === "legacy" &&
+      encryptedBytes[0] === 0x32 && encryptedBytes[1] === 0x2e
+      ? new TextDecoder().decode(encryptedBytes)
+      : null;
+    plaintext = legacyCipherString && /^2\.[A-Za-z0-9+/]{22}(?:==)?\|[A-Za-z0-9+/]+={0,2}\|[A-Za-z0-9+/]{43}=?$/u.test(legacyCipherString)
+      ? await decryptWithUserKey(legacyCipherString, send.sendKey)
       : await decryptBinaryBytes(encryptedBytes, send.sendKey);
     downloadBytes = new Uint8Array(plaintext);
     const url = URL.createObjectURL(new Blob([downloadBytes.buffer]));

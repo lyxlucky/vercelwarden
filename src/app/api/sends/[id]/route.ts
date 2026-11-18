@@ -56,6 +56,10 @@ export async function PUT(
   const passwordProvided =
     body.password !== undefined ||
     body.Password !== undefined;
+  const passwordInput = body.password !== undefined ? body.password : body.Password;
+  if (passwordInput != null && typeof passwordInput !== "string") {
+    return errorResponse("Password must be a string or null");
+  }
   const nameProvided = body.name !== undefined || body.Name !== undefined;
   const notesProvided = body.notes !== undefined || body.Notes !== undefined;
   const expirationProvided = body.expirationDate !== undefined || body.ExpirationDate !== undefined;
@@ -75,7 +79,7 @@ export async function PUT(
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   })();
   const password = passwordProvided
-    ? await hashSendPassword(((body.password ?? body.Password) as string | null) ?? null)
+    ? await hashSendPassword(passwordInput)
     : existing.password;
 
   await commitUserMutation({
