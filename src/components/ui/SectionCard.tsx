@@ -10,7 +10,17 @@ export function SectionCard({ title, description, action, children, danger = fal
 }) {
   return (
     <Card variant="outlined" sx={danger ? { borderColor: "error.main" } : undefined}>
-      <CardHeader title={<Typography component="h2" variant="h6">{title}</Typography>} subheader={description} action={action} />
+      <CardHeader
+        title={<Typography component="h2" variant="h6">{title}</Typography>}
+        subheader={description}
+        action={action}
+        sx={action ? {
+          flexWrap: "wrap",
+          gap: 1.25,
+          "& .MuiCardHeader-content": { flexBasis: { xs: "100%", sm: "min(14rem, 100%)" }, minWidth: 0 },
+          "& .MuiCardHeader-action": { m: 0, maxWidth: "100%" },
+        } : undefined}
+      />
       <Divider />
       <CardContent>{children}</CardContent>
     </Card>

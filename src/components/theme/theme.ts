@@ -331,7 +331,17 @@ export function createAppTheme(input: AppearancePreferences = DEFAULT_APPEARANCE
         },
       },
       MuiDialogTitle: { styleOverrides: { root: { fontSize: "1.125rem", fontWeight: 700 } } },
-      MuiDialogActions: { styleOverrides: { root: { gap: density.spacing, padding: density.contentPadding } } },
+      MuiDialogActions: {
+        defaultProps: { disableSpacing: true },
+        styleOverrides: {
+          root: {
+            flexWrap: "wrap",
+            gap: density.spacing,
+            padding: density.contentPadding,
+            "& > .MuiButton-root": { maxWidth: "100%" },
+          },
+        },
+      },
       MuiMenu: {
         styleOverrides: {
           paper: ({ theme: muiTheme }) => ({

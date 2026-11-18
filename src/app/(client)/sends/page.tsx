@@ -35,6 +35,7 @@ import {
   Typography,
 } from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 import { AsyncState } from "@/components/ui/AsyncState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ToolPageShell } from "@/components/ui/ToolPageShell";
@@ -260,11 +261,11 @@ export default function SendsPage() {
                     {item.file?.fileName ?? "文本"} · 访问 {item.accessCount}{item.maxAccessCount == null ? "" : ` / ${item.maxAccessCount}`} · {item.disabled ? "已停用" : `删除 ${new Date(item.deletionDate).toLocaleString("zh-CN")}`}
                   </Typography>
                 </Box>
-                <Stack direction="row" sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, justifyContent: { xs: "flex-end", sm: "initial" } }}>
+                <ActionGroup sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, justifyContent: "flex-end" }}>
                   <Tooltip title="复制分享链接"><IconButton aria-label="复制分享链接" onClick={() => void copyLink(item)}>{copied === item.id ? <CheckOutlined color="success" /> : <ContentCopyOutlined />}</IconButton></Tooltip>
                   <Tooltip title={`编辑 ${item.name}`}><span><IconButton aria-label={`编辑 ${item.name}`} disabled={loading} onClick={() => edit(item)}><EditOutlined /></IconButton></span></Tooltip>
                   <Tooltip title={`删除 ${item.name}`}><span><IconButton aria-label={`删除 ${item.name}`} disabled={loading} color="error" onClick={() => setDeleteIds([item.id])}><DeleteOutlineOutlined /></IconButton></span></Tooltip>
-                </Stack>
+                </ActionGroup>
               </CardContent>
             </Card>
           ))}

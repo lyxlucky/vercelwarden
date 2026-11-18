@@ -19,6 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 import { RouteGuard } from "@/components/shell/RouteGuard";
+import { ActionGroup } from "@/components/ui/ActionGroup";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { ToolPageShell } from "@/components/ui/ToolPageShell";
 import {
@@ -162,12 +163,12 @@ export default function GeneratorPage() {
             >
               {validInput && generated ? generated : "等待生成…"}
             </Box>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <ActionGroup mobileStack>
               <Button disabled={!validInput} startIcon={<RefreshOutlined />} onClick={() => setSeed((value) => value + 1)}>重新生成</Button>
               <Button disabled={!validInput || !generated} variant="contained" startIcon={copyState === "copied" ? <CheckOutlined /> : <ContentCopyOutlined />} onClick={() => void copy()}>
                 {copyState === "copied" ? "已复制" : "复制"}
               </Button>
-            </Stack>
+            </ActionGroup>
             {copyState === "error" ? <Alert severity="error">无法访问剪贴板，请手动选择并复制结果。</Alert> : null}
           </Stack>
         </SectionCard>
