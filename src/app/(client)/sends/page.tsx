@@ -71,6 +71,8 @@ export default function SendsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [maxAccessCount, setMaxAccessCount] = useState("");
+  const accessLimit = maxAccessCount === "" ? null : Number(maxAccessCount);
+  const validAccessLimit = accessLimit === null || (Number.isSafeInteger(accessLimit) && accessLimit > 0);
   const [disabled, setDisabled] = useState(false);
   const [hideEmail, setHideEmail] = useState(false);
   const [deletionDate, setDeletionDate] = useState("");
@@ -141,6 +143,7 @@ export default function SendsPage() {
   };
 
   const submit = async () => {
+    if (!validAccessLimit) return;
     setBusy(true);
     setError(null);
     setFormError(null);
@@ -155,7 +158,7 @@ export default function SendsPage() {
         const updated = await updateSend(editing.id, {
           name,
           notes,
-          maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null,
+          maxAccessCount: accessLimit,
           disabled,
           hideEmail,
           deletionDate: deletionIso,
@@ -167,7 +170,7 @@ export default function SendsPage() {
           if (!file) { setFormError("请选择要分享的文件。"); return; }
           if (file.size > MAX_SEND_FILE_BYTES) { setFormError("文件超过 100 MB 上限，请选择更小的文件。"); return; }
         }
-        const input = { name, notes, password, maxAccessCount: maxAccessCount ? Number(maxAccessCount) : null, deletionDate: deletionIso, disabled, hideEmail };
+        const input = { name, notes, password, maxAccessCount: accessLimit, deletionDate: deletionIso, disabled, hideEmail };
         const created = type === "text" ? await createTextSend({ ...input, text }) : await createFileSend({ ...input, file: file! }, setProgress);
         setItems((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       }
@@ -209,7 +212,7 @@ export default function SendsPage() {
     }
   };
 
-  const valid = Boolean(name.trim()) && Boolean(deletionDate) && (Boolean(editing) || (type === "text" ? Boolean(text) : Boolean(file)));
+  const valid = Boolean(name.trim()) && Boolean(deletionDate) && validAccessLimit && (Boolean(editing) || (type === "text" ? Boolean(text) : Boolean(file)));
   const formatFileSize = (size: number) => {
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -303,7 +306,15 @@ export default function SendsPage() {
                   <FormControlLabel control={<Checkbox checked={removePassword} onChange={(event) => { setRemovePassword(event.target.checked); if (event.target.checked) setPassword(""); }} />} label="移除访问密码" />
                 </Stack>
               )}
-              <TextField label="最大访问次数（可选）" type="number" slotProps={{ htmlInput: { min: 1 } }} value={maxAccessCount} onChange={(event) => setMaxAccessCount(event.target.value)} />
+              <TextField
+                label="最大访问次数（可选）"
+                type="number"
+                slotProps={{ htmlInput: { min: 1, step: 1 } }}
+                value={maxAccessCount}
+                onChange={(event) => setMaxAccessCount(event.target.value)}
+                error={!validAccessLimit}
+                helperText={!validAccessLimit ? "请输入大于 0 的整数。" : "留空表示不限次数。文本按查看计次，文件按下载授权计次。"}
+              />
               <TextField
                 label="删除时间"
                 type="datetime-local"

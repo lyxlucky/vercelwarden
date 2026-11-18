@@ -355,38 +355,60 @@ export async function accessPublicSend(accessId: string, fragment: string, passw
   }
 }
 
-export async function downloadPublicSendFile(accessId: string, send: Extract<PublicSend, { type: "file" }>, password?: string, onProgress?: (progress: SendTransferProgress) => void) {
+export interface SendDownloadAttempt {
+  authorization?: { url: string; checksum: string | null };
+}
+
+export async function downloadPublicSendFile(
+  accessId: string,
+  send: Extract<PublicSend, { type: "file" }>,
+  password?: string,
+  onProgress?: (progress: SendTransferProgress) => void,
+  attempt: SendDownloadAttempt = {},
+) {
+  let encryptedBytes: Uint8Array<ArrayBuffer> | undefined;
+  let plaintext: Uint8Array | undefined;
+  let downloadBytes: Uint8Array<ArrayBuffer> | undefined;
   try {
     report(onProgress, "downloading", 0, send.file.size);
-    const authorization = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}/file/${encodeURIComponent(send.file.id)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: password || undefined }),
-      cache: "no-store",
-    });
-    if (!authorization.ok) throw new Error("文件下载授权已失效。");
-    const metadata = await authorization.json() as { url: string; checksum: string | null };
+    if (!attempt.authorization) {
+      const authorization = await fetch(`/api/sends/access/${encodeURIComponent(accessId)}/file/${encodeURIComponent(send.file.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password || undefined }),
+        cache: "no-store",
+      });
+      if (authorization.status === 401) throw new Error("访问密码不正确。");
+      if (authorization.status === 404) throw new Error("文件不可用，或分享已过期、停用或达到访问次数上限。");
+      if (!authorization.ok) throw new Error("暂时无法获取下载授权，请重试。");
+      attempt.authorization = await authorization.json() as NonNullable<SendDownloadAttempt["authorization"]>;
+    }
+    const metadata = attempt.authorization;
     const response = await fetch(metadata.url, { cache: "no-store", credentials: "omit" });
+    if (response.status === 401) {
+      attempt.authorization = undefined;
+      throw new Error("文件下载授权已过期，请重试。");
+    }
     if (!response.ok) throw new Error(`文件下载失败（${response.status}）。`);
-    const encryptedBytes = new Uint8Array(await response.arrayBuffer());
+    encryptedBytes = new Uint8Array(await response.arrayBuffer());
     if (metadata.checksum && await sha256Hex(encryptedBytes) !== metadata.checksum) throw new Error("文件完整性校验失败。");
     report(onProgress, "downloading", send.file.size, send.file.size);
     report(onProgress, "decrypting", 0, send.file.size);
-    const plaintext = send.file.encoding === "legacy"
+    plaintext = send.file.encoding === "legacy"
       ? await decryptWithUserKey(new TextDecoder().decode(encryptedBytes), send.sendKey)
       : await decryptBinaryBytes(encryptedBytes, send.sendKey);
-    const downloadBytes = new Uint8Array(plaintext);
+    downloadBytes = new Uint8Array(plaintext);
     const url = URL.createObjectURL(new Blob([downloadBytes.buffer]));
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = send.file.fileName;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    attempt.authorization = undefined;
+    report(onProgress, "complete", send.file.size, send.file.size);
+  } finally {
     wipeBytes(encryptedBytes);
     wipeBytes(plaintext);
     wipeBytes(downloadBytes);
-    report(onProgress, "complete", send.file.size, send.file.size);
-  } finally {
-    wipeBytes(send.sendKey);
   }
 }

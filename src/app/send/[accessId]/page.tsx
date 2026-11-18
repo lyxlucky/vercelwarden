@@ -37,6 +37,7 @@ import {
   downloadPublicSendFile,
   PublicSendAccessError,
   type PublicSend,
+  type SendDownloadAttempt,
   type SendTransferProgress,
 } from "@/features/sends/api";
 import { wipeBytes } from "@/lib/client/crypto/auth";
@@ -69,6 +70,7 @@ export default function PublicSendPage() {
   const [copyFeedback, setCopyFeedback] = useState<"success" | "error" | null>(null);
   const automaticAttempt = useRef<string | null>(null);
   const copyTimer = useRef<number | null>(null);
+  const downloadAttempt = useRef<SendDownloadAttempt>({});
 
   useEffect(() => () => {
     if (result?.type === "file") wipeBytes(result.sendKey);
@@ -82,6 +84,7 @@ export default function PublicSendPage() {
     setBusy(true);
     setError(null);
     setProgress(null);
+    downloadAttempt.current = {};
     try {
       const send = await accessPublicSend(params.accessId, window.location.hash.slice(1), attemptPassword);
       setResult(send);
@@ -109,7 +112,7 @@ export default function PublicSendPage() {
     setBusy(true);
     setError(null);
     try {
-      await downloadPublicSendFile(params.accessId, send, password || undefined, setProgress);
+      await downloadPublicSendFile(params.accessId, send, password || undefined, setProgress, downloadAttempt.current);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "下载失败。");
     } finally {

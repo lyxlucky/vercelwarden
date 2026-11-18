@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { get } from "@vercel/blob";
+import { BlobNotFoundError, get, head } from "@vercel/blob";
 import { db } from "@/db";
 import { sendFiles } from "@/db/schema";
 import { errorResponse, jsonResponse, notFound } from "@/lib/responses";
@@ -16,7 +16,7 @@ async function completeFile(sendUuid: string, fileUuid: string) {
     eq(sendFiles.uuid, fileUuid),
     eq(sendFiles.sendUuid, sendUuid)
   )).limit(1);
-  return file?.status === "complete" && file.blobUrl ? file : null;
+  return file?.status === "complete" && file.blobUrl ? { ...file, blobUrl: file.blobUrl } : null;
 }
 
 export async function GET(
@@ -50,24 +50,28 @@ export async function POST(
   const { accessId, fileId } = await params;
   const sendUuid = uuidFromAccessId(accessId);
   if (!sendUuid) return notFound("Send not found");
-  const body = await request.json().catch(() => ({})) as { password?: string; downloadToken?: string };
-  let token = body.downloadToken ?? "";
-  let claims = verifySendFileDownloadToken(token);
-  if (!claims) {
-    // Confirm the file is actually downloadable BEFORE consuming an access, so
-    // an unavailable/incomplete file never burns the recipient's access count.
-    const ready = await completeFile(sendUuid, fileId);
-    if (!ready) return notFound("File not found");
-    const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, body.password));
-    if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
-    if (result.status !== "ok" || result.send.type !== 1) return notFound("Send not found or no longer available");
-    const issued = issueSendFileDownloadToken({ sendUuid, fileUuid: fileId });
-    token = issued.token;
-    claims = verifySendFileDownloadToken(token);
+  const body = await request.json().catch(() => null);
+  const password = typeof body?.password === "string" ? body.password : undefined;
+  let token = typeof body?.downloadToken === "string" ? body.downloadToken : "";
+  const claims = verifySendFileDownloadToken(token);
+  if (claims && (claims.sendUuid !== sendUuid || claims.fileUuid !== fileId)) {
+    return errorResponse("Invalid download authorization", 401);
   }
-  if (!claims || claims.sendUuid !== sendUuid || claims.fileUuid !== fileId) return errorResponse("Invalid download authorization", 401);
   const file = await completeFile(sendUuid, fileId);
   if (!file) return notFound("File not found");
+  if (!claims) {
+    try {
+      await head(file.blobUrl);
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return notFound("File not found");
+      return errorResponse("File storage is temporarily unavailable", 503);
+    }
+    const issued = issueSendFileDownloadToken({ sendUuid, fileUuid: fileId });
+    const result = await db.transaction((tx) => consumeSendAccess(tx, sendUuid, password));
+    if (result.status === "invalid_password") return errorResponse("Invalid password", 401);
+    if (result.status !== "ok" || result.send.type !== 1) return notFound("Send not found or no longer available");
+    token = issued.token;
+  }
   return jsonResponse({
     object: "send-file-download",
     id: file.uuid,
