@@ -298,9 +298,11 @@ Authorization: Bearer <access_token>
   ],
   "collections": [],
   "domains": {
-    "EquivalentDomains": [],
-    "GlobalEquivalentDomains": [],
-    "Object": "domains"
+    "equivalentDomains": [["example.com", "example.net"]],
+    "globalEquivalentDomains": [
+      { "type": 1, "domains": ["google.com", "gmail.com", "youtube.com"], "excluded": false }
+    ],
+    "object": "domains"
   },
   "policies": [],
   "sends": [],

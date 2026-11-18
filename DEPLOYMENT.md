@@ -341,7 +341,7 @@ vercelwarden/
 2. 为 `SERVER_ENCRYPTION_KEY` 和 `BACKUP_ENCRYPTION_KEY` 分别生成独立的 32 字节 Base64 密钥，并纳入部署平台密钥轮换流程。
 3. 设置 `ADMIN_BOOTSTRAP_EMAIL`，使用该邮箱完成普通注册后首次启动会提升为管理员；产生首位管理员后此变量不再提升其他账号。
 4. 逐项开启 `ENABLE_ADMIN_INVITES`、`ENABLE_ADMIN_AUDIT`、`ENABLE_ADMIN_BACKUP`。旧 Basic 管理认证仅在过渡期显式设置 `ALLOW_LEGACY_ADMIN_BASIC=true`，且只允许读取。
-5. 为 `/api/internal/maintenance` 配置带 `Authorization: Bearer <MAINTENANCE_CRON_SECRET>` 的定时 POST，用于清理过期登录请求、pending Blob、Send、审计记录和备份 artifact。
+5. 定期清理过期登录请求、pending Blob、Send、审计记录和备份 artifact：仓库已内置 `vercel.json` 的 Cron（每日调用 `GET /api/internal/maintenance`），部署到 Vercel 时只需设置 `CRON_SECRET`（Vercel Cron 会自动以 `Authorization: Bearer $CRON_SECRET` 调用）。若不使用 Vercel Cron，也可用外部定时器带 `Authorization: Bearer <MAINTENANCE_CRON_SECRET>` 调用该端点（GET 或 POST 均可）。
 6. 备份恢复演练必须先运行完整性检查；`replace` 会清空受管业务表后恢复，`merge` 只插入缺失记录。两种模式都会返回逐类成功/失败计数并写审计事件。
 
 发布门禁：`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:contract`、`pnpm build`、`pnpm test:e2e`、`pnpm test:compat`。生产响应启用 CSP、禁止 framing、no-referrer、nosniff、Permissions-Policy 和 HSTS。
