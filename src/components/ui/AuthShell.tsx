@@ -148,7 +148,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
             lg: "none",
           },
           ...theme.applyStyles("dark", {
-            backgroundImage: { xs: "radial-gradient(circle at 50% -10%, rgba(124,140,255,0.16), transparent 55%)", lg: "none" },
+            backgroundImage: "radial-gradient(circle at 50% -10%, rgba(124,140,255,0.16), transparent 55%)",
+            [theme.breakpoints.up("lg")]: {
+              backgroundImage: "none",
+            },
           }),
         })}
       >
