@@ -5,7 +5,7 @@ import CameraAltOutlined from "@mui/icons-material/CameraAltOutlined";
 import ImageOutlined from "@mui/icons-material/ImageOutlined";
 import KeyboardOutlined from "@mui/icons-material/KeyboardOutlined";
 import QrCodeScannerOutlined from "@mui/icons-material/QrCodeScannerOutlined";
-import { Alert, Box, Button, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Alert, Box, Button, Paper, Stack, TextField, ToggleButton, Typography } from "@mui/material";
 import { decodeTotpQrImage, parseTotpInput } from "@/lib/client/crypto/totp";
 
 export function TotpCapture({ value, onChange }: { value: string; onChange(value: string): void }) {
@@ -46,15 +46,24 @@ export function TotpCapture({ value, onChange }: { value: string; onChange(value
 
   return (
     <Stack spacing={1.5}>
-      <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1, alignItems: { sm: "center" }, justifyContent: "space-between" }}>
+      <Stack spacing={1.5}>
         <Box><Typography variant="subtitle2">一次性验证码</Typography><Typography variant="caption" color="text.secondary">手动输入密钥，或扫描身份验证器二维码</Typography></Box>
-        <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
-          <ToggleButtonGroup size="small" exclusive value={mode} onChange={(_, next: "manual" | "camera" | null) => { if (!next) return; if (next === "manual") { stopCamera(); setMode("manual"); } else void startCamera(); }}>
-            <ToggleButton value="manual" aria-label="手动"><KeyboardOutlined fontSize="small" sx={{ mr: 0.75 }} />手动</ToggleButton>
-            <ToggleButton value="camera" aria-label="摄像头"><CameraAltOutlined fontSize="small" sx={{ mr: 0.75 }} />摄像头</ToggleButton>
-          </ToggleButtonGroup>
+        <Box role="group" aria-label="验证码录入方式" sx={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 6rem), 1fr))",
+          width: "100%",
+          maxWidth: "24rem",
+          gap: "12px",
+          "& > .MuiButtonBase-root": { minHeight: 44, px: 1 },
+        }}>
+          <ToggleButton size="small" value="manual" selected={mode === "manual"} onClick={() => { stopCamera(); setMode("manual"); }}>
+            <KeyboardOutlined fontSize="small" sx={{ mr: 0.75 }} />手动
+          </ToggleButton>
+          <ToggleButton size="small" value="camera" selected={mode === "camera"} onClick={() => { if (mode !== "camera") void startCamera(); }}>
+            <CameraAltOutlined fontSize="small" sx={{ mr: 0.75 }} />摄像头
+          </ToggleButton>
           <Button component="label" size="small" variant="outlined" startIcon={<ImageOutlined />}>图片<input type="file" accept="image/*" hidden onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; try { accept(await decodeTotpQrImage(file)); } catch (nextError) { setError(nextError instanceof Error ? nextError.message : "二维码识别失败。"); } event.target.value = ""; }} /></Button>
-        </Stack>
+        </Box>
       </Stack>
 
       {mode === "manual" ? (
