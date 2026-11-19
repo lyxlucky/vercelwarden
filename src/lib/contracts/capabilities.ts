@@ -73,7 +73,7 @@ export function buildCapabilityDocument(env: CapabilityEnvironment = process.env
     "auth.passkeyDirectUnlock": enabled(env.ENABLE_PASSKEY_DIRECT_UNLOCK),
     "device.management": enabled(env.ENABLE_DEVICE_MANAGEMENT),
     "authRequests.approval": enabled(env.ENABLE_AUTH_REQUESTS),
-    "domainRules.write": enabled(env.ENABLE_DOMAIN_RULES_WRITE),
+    "domainRules.write": enabled(env.ENABLE_DOMAIN_RULES_WRITE ?? "true"),
     "vault.import": enabled(env.ENABLE_VAULT_IMPORT),
     "vault.exportAttachments": enabled(env.ENABLE_ATTACHMENT_EXPORT),
     "admin.users": true,

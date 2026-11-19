@@ -206,6 +206,7 @@ vercel --prod
 | `JWT_SECRET` | ✅ | JWT 签名密钥 (随机 hex) |
 | `ADMIN_PASSWORD` | ✅ | 管理后台密码 |
 | `DISABLE_REGISTRATION` | 可选 | `true` 关闭公开注册 |
+| `ENABLE_DOMAIN_RULES_WRITE` | 可选 | 默认开启「设置 → 域名规则」编辑。设为 `false` 可关闭写入。 |
 | `BLOB_READ_WRITE_TOKEN` | 可选 | Vercel Blob token (附件功能) |
 | `NOTIFICATIONS_MODE` | 可选 | `poll`（默认）、`sse` 或实验性的 `websocket` |
 | `VERCEL_WEBSOCKET_ENABLED` | WebSocket 必需 | 开启 Fluid Compute 后设为 `true`，显式确认运行时就绪 |
